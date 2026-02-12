@@ -1,5 +1,5 @@
 
-package parser;
+package model;
 
 public enum CommandType {
 
