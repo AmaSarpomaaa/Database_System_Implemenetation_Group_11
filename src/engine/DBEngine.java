@@ -2,7 +2,7 @@ package engine;
 
 import model.Result;
 import util.DBException;
-import util.ParseException;
+//import util.ParseException;
 
 public interface DBEngine {
 
@@ -11,7 +11,7 @@ public interface DBEngine {
                  int bufferSize,
                  boolean indexingEnabled) throws DBException;
 
-    Result execute(String sql) throws DBException, ParseException;
+//    Result execute(String sql) throws DBException, ParseException;
 
     void shutdown() throws DBException;
 }
