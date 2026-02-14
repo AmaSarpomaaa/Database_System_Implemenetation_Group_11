@@ -5,7 +5,7 @@ import java.util.List;
 
 public interface ParsedCommand {
 
-    CommandType type();
+//    CommandType type();
 
     String tableName();
 
