@@ -125,12 +125,12 @@ public class Catalog implements CatalogIN {
         ByteBuffer buffer = ByteBuffer.allocate(4096);
 
         // Write table name
-        byte[] nameBytes = table.name.getBytes();
+        byte[] nameBytes = table.name().getBytes();
         buffer.putInt(nameBytes.length);
         buffer.put(nameBytes);
 
         // Write schema (list of attributes)
-        List<Attribute> attributes = table.schema.getAttributes();
+        List<Attribute> attributes = table.schema().getAttributeList();
         buffer.putInt(attributes.size());
 
         for (Attribute attr : attributes) {

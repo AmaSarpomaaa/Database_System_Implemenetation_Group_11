@@ -8,4 +8,8 @@ public class Schema {
     public Schema(List<Attribute> attr){
         attributeList = attr;
     }
+
+    public List<Attribute> getAttributeList() {
+        return attributeList;
+    }
 }
