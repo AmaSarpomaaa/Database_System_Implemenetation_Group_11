@@ -29,13 +29,6 @@ public class Catalog implements CatalogIN {
     }
 
     /**
-     * Load catalog from disk into memory cache
-     */
-    public void load() throws DBException {
-        loadTables();
-    }
-
-    /**
      * Create empty system tables (for new database)
      */
     public void initializeSystemTables() throws DBException {
@@ -47,7 +40,8 @@ public class Catalog implements CatalogIN {
     /**
      * Load all tables from SYS_TABLES into memory
      */
-    private void loadTables() throws DBException {
+    @Override
+    public void load() throws DBException {
         Page sysTablesPage = bufferManager.getPage(SYS_TABLES_PAGE);
 
         int numRecords = sysTablesPage.getNumRecords();
@@ -79,25 +73,17 @@ public class Catalog implements CatalogIN {
         bufferManager.markDirty(SYS_TABLES_PAGE);
     }
 
-    /**
-     * Get table by name
-     */
+
     @Override
     public TableSchema getTable(String tableName) {
         return tables.get(tableName);
     }
 
-    /**
-     * Check if table exists
-     */
     @Override
     public boolean exists(String tableName) {
         return tables.containsKey(tableName);
     }
 
-    /**
-     * Get all table names
-     */
     public Set<String> getAllTableNames() {
         return tables.keySet();
     }
@@ -115,9 +101,7 @@ public class Catalog implements CatalogIN {
         tables.remove(tableName);
     }
 
-    /**
-     * Serialize table to bytes
-     */
+
     /**
      * Serialize table to bytes
      */
