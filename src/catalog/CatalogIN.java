@@ -7,11 +7,9 @@ public interface CatalogIN {
 
     void load() throws DBException;
 
-    void save() throws DBException;
-
     void addTable(Table table) throws DBException;
 
-    void removeTable(String tableName) throws DBException;
+    void dropTable(String tableName) throws DBException;
 
     Table getTable(String tableName) throws DBException;
 

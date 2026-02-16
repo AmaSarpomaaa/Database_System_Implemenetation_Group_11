@@ -1,25 +1,26 @@
 package model;
 
 import java.util.ArrayList;
+import java.util.List;
 
 public class Page {
-    private ArrayList<Record> records;
-    private int pageID;
+    private int pageId;
+    private List<byte[]> records;  // Just a list of records
 
-    public Page(int id){
-        records = new ArrayList<Record>();
-        pageID = id;
+    public void initialize() {
+        records = new ArrayList<>();
     }
 
-    public void addRecord(Record r){
-        records.add(r);
+    public int insertRecord(byte[] record) {
+        records.add(record);
+        return records.size() - 1;  // slot ID
     }
 
-    public ArrayList<Record> getRecords(){
-        return records;
+    public byte[] getRecord(int slotId) {
+        return records.get(slotId);
     }
 
-    public int getPageID() {
-        return pageID;
+    public int getNumRecords() {
+        return records.size();
     }
 }
