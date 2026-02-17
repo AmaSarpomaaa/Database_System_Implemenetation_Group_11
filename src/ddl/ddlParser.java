@@ -44,7 +44,7 @@ public class ddlParser implements DDLProcessor {
         TableSchema table = new TableSchema(tableName, schema);
         catalog.addTable(tableName, table);
 
-        return new Result("Table '" + tableName + "' created successfully.");
+        return Result.ok("Table '" + tableName + "' created successfully.");
     }
 
     @Override
@@ -59,7 +59,7 @@ public class ddlParser implements DDLProcessor {
         // Remove from catalog
         catalog.removeTable(tableName);
 
-        return new Result("Table '" + tableName + "' dropped successfully.");
+        return Result.ok("Table '" + tableName + "' dropped successfully.");
     }
 
     @Override
@@ -111,7 +111,7 @@ public class ddlParser implements DDLProcessor {
         catalog.removeTable(tableName);
         catalog.addTable(tableName, tempTable);
 
-        return new Result("Attribute '" + attrName + "' added to table '" + tableName + "'.");
+        return Result.ok("Attribute '" + attrName + "' added to table '" + tableName + "'.");
     }
 
     @Override
@@ -164,7 +164,7 @@ public class ddlParser implements DDLProcessor {
         catalog.removeTable(tableName);
         catalog.addTable(tableName, tempTable);
 
-        return new Result("Attribute '" + attrName + "' dropped from table '" + tableName + "'.");
+        return Result.ok("Attribute '" + attrName + "' dropped from table '" + tableName + "'.");
     }
 
     // Helper methods for parsing attributes from ParsedCommand
