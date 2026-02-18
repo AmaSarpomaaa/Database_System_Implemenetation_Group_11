@@ -1,9 +1,14 @@
 package parser;
 
+import model.Attribute;
+import model.Datatype;
 import model.ParsedCommand;
+import model.CreateTableCommand;
 import util.ParseException;
-import java.util.NoSuchElementException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Scanner;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class ParserImplementation implements Parser
@@ -69,109 +74,152 @@ public class ParserImplementation implements Parser
     {
         Scanner inputScanner = new Scanner(input);
 
-        //Check for "CREATE TABLE"
-        if (!inputScanner.hasNext() || !inputScanner.next().equals("CREATE")) {
-            if (!inputScanner.hasNext() || !inputScanner.next().equals("TABLE")) {
-                throw new ParseException("Error: invalid command");
-            }
-        }
+        //Check for "CREATE TABLE <tableName> (<something>);
+        Pattern pattern = Pattern.compile("CREATE TABLE (\\w+) *\\((.*)\\);");
+        Matcher matcher = pattern.matcher(input);
 
-        //check and get " <tableName>"
+        //extract tableName
         String tableName;
-        if (inputScanner.hasNext()) {
-            tableName = inputScanner.next();
+        String attributesString;
+
+        if (matcher.matches()) {
+            tableName = matcher.group(1).toLowerCase();
+            attributesString = matcher.group(2);
         }
         else {
-            throw new ParseException("Error: table name missing");
+            throw new ParseException("Error: Invalid command syntax.");
         }
 
-        if (!isAlphanumeric(tableName)) {
-            throw new ParseException("Error: table name composed of non-alphanumeric characters");
-        }
+        //extract attributes
+        List<Attribute> attributes = new ArrayList<>();
 
-        //check for " ("
-        if (!inputScanner.hasNext() || !inputScanner.next().equals("(")) {
-            throw new ParseException("Error: table attributes missing");
-        }
+        String[] attributesSplit = attributesString.split(",");
 
-        //parse attributes
-        boolean done = false;
-        inputScanner.useDelimiter(",");
-        while (!done)
-        {
+        for (String attributeString : attributesSplit) {
 
-            String attribute = inputScanner.next().trim();
-            String[] attributeSplit = attribute.split(" +");
+            String[] attributeSplit = attributeString.split(" ");
 
-            if (attributeSplit.length < 2)
-            {
-                throw new ParseException("Error: attribute missing name or type");
+            String attributeName;
+            Datatype attributeType;
+            int attributeTypeLength;     //-1 for anything other than CHAR and VARCHAR
+            boolean isPrimaryKey;
+            boolean notNull;
+
+            if (attributeSplit.length < 2) {
+                throw new ParseException("Error: Attribute missing name or type in \"" + attributeString + "\"");
             }
+            else if (attributeSplit.length < 5) {
 
-            //attribute name
-            String attributeName = attributeSplit[0].toLowerCase();
-            if (!isAlphanumeric(attributeName)) {
-                throw new ParseException("Error: attribute name composed of non-alphanumeric characters");
-            }
+                //extract attribute name
+                attributeName = attributeSplit[0].toLowerCase();
 
-            //attribute type
-            String attributeTypeStr = attributeSplit[1];
-            /*
-             * I don't think there is an attribute type object right now.
-             * If there is later, attributeType should be switched to use that.
-             * For now this is an array.
-             *   One element for INTEGER, DOUBLE, and BOOLEAN.
-             *   Two elements for CHAR and VARCHAR.
-             *   The first element is the name of the type.
-             *   The second element is the length for CHAR and VARCHAR.
-             */
-            String[] attributeType;
+                if (!isAlphanumeric(attributeName)) {
+                    throw new ParseException("Error: Attribute name \"" + attributeName + "\" composed of non-alphanumeric characters");
+                }
 
-            if (attributeTypeStr.equals("INTEGER"))
-            {
-                attributeType = new String[] {"INTEGER"};
-            }
-            else if (attributeTypeStr.equals("DOUBLE"))
-            {
-                attributeType = new String[] {"DOUBLE"};
-            }
-            else if (attributeTypeStr.equals("BOOLEAN"))
-            {
-                attributeType = new String[] {"BOOLEAN"};
-            }
-            else if (Pattern.matches("CHAR\\(\\d+\\)", attributeTypeStr))   //matches CHAR(<a number>))
-            {
+                //extract attribute type
+                String attributeTypeStr = attributeSplit[1];
 
-                int start = attributeTypeStr.indexOf('(') + 1;
-                int end = attributeTypeStr.indexOf(')');
+                if (attributeTypeStr.equals("INTEGER")) {
+                    attributeType = Datatype.INTEGER;
+                    attributeTypeLength = -1;
+                }
+                else if (attributeTypeStr.equals("DOUBLE")) {
+                    attributeType = Datatype.DOUBLE;
+                    attributeTypeLength = -1;
+                }
+                else if (attributeTypeStr.equals("BOOLEAN")) {
+                    attributeType = Datatype.BOOLEAN;
+                    attributeTypeLength = -1;
+                }
+                else if (Pattern.matches("CHAR\\(\\d+\\)", attributeTypeStr)) {   //matches CHAR(<a number>))
 
-                String n = attributeTypeStr.substring(start, end);
-                attributeType = new String[] {"CHAR", n};
+                    int start = attributeTypeStr.indexOf('(') + 1;
+                    int end = attributeTypeStr.indexOf(')');
 
-            }
-            else if (Pattern.matches("VARCHAR\\(\\d+\\)", attributeTypeStr))   //matches VARCHAR(<a number>))
-            {
+                    int n = Integer.getInteger(attributeTypeStr.substring(start, end));
+                    attributeType = Datatype.CHAR;
+                    attributeTypeLength = n;
 
-                int start = attributeTypeStr.indexOf('(') + 1;
-                int end = attributeTypeStr.indexOf(')');
+                }
+                else if (Pattern.matches("VARCHAR\\(\\d+\\)", attributeTypeStr)) {   //matches VARCHAR(<a number>))
 
-                String n = attributeTypeStr.substring(start, end);
-                attributeType = new String[] {"VARCHAR", n};
+                    int start = attributeTypeStr.indexOf('(') + 1;
+                    int end = attributeTypeStr.indexOf(')');
+
+                    int n = Integer.getInteger(attributeTypeStr.substring(start, end));
+                    attributeType = Datatype.VARCHAR;
+                    attributeTypeLength = n;
+                }
+                else {
+                    throw new ParseException("Error: Attribute Type \"" + attributeTypeStr + "\" was not a valid type.");
+                }
+
+                //extract attribute constraints
+
+                if (attributeSplit.length == 2) {
+                    isPrimaryKey = false;
+                    notNull = false;
+                }
+                else if (attributeSplit.length == 3) {
+                    if (attributeSplit[2].equals("PRIMARYKEY")) {
+                        isPrimaryKey = true;
+                        notNull = false;
+                    }
+                    else if (attributeSplit[2].equals("NOTNULL")) {
+                        notNull = true;
+                        isPrimaryKey = false;
+                    }
+                    else {
+                        throw new ParseException("Error: Attribute constraint \"" + attributeSplit[2] + "\" was not a valid constraint.");
+                    }
+                }
+                else { // attributeSplit.length == 4
+                    //both should be true by the end of the else statement, unless an error is thrown
+                    //but the logic is complicated enough that they need to be assigned here to make
+                    //intellij recognize that they're always initialized
+                    isPrimaryKey = false;
+                    notNull = false;
+
+                    if (attributeSplit[2].equals("PRIMARYKEY")) {
+                        isPrimaryKey = true;
+                    }
+                    else if (attributeSplit[2].equals("NOTNULL")) {
+                        notNull = true;
+                    }
+                    else {
+                        throw new ParseException("Error: Attribute constraint \"" + attributeSplit[2] + "\" was not a valid constraint.");
+                    }
+
+                    if (attributeSplit[3].equals("PRIMARYKEY")) {
+                        isPrimaryKey = true;
+                    }
+                    else if (attributeSplit[3].equals("NOTNULL")) {
+                        notNull = true;
+                    }
+                    else {
+                        throw new ParseException("Error: Attribute constraint \"" + attributeSplit[2] + "\" was not a valid constraint.");
+                    }
+
+                    if (attributeSplit[2].equals(attributeSplit[3])) {
+                        throw new ParseException("Error: Duplicate attribute constraints in \"" + attributeString + "\".");
+                    }
+
+                }
+
             }
             else
             {
-                throw new ParseException("Error: invalid attribute type");
+                throw new ParseException("Error: Attribute \"" + attributeString + "\" included more than 4 pieces of information");
             }
 
-            //attribute conditions
-            if (attributeSplit.length > 2)
-            {
-
-            }
+            Attribute attribute = new Attribute(attributeName, notNull, isPrimaryKey, attributeType);
+            attributes.add(attribute);
 
         }
 
-        throw new UnsupportedOperationException("parseCreate has not been implemented yet.");
+        return new CreateTableCommand(tableName, attributes.toArray());
+
     }
 
     private ParsedCommand parseSelect(String input) throws ParseException
