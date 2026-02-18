@@ -357,8 +357,8 @@ public class ParserImplementation implements Parser
 
     private ParsedCommand parseDrop(String input) throws ParseException
     {
-        //Check for "Drop Table <tableName>;"
-        Matcher matcher = Pattern.compile("DROP Table (\\w+);").matcher(input);
+        //Check for "DROP TABLE <tableName>;"
+        Matcher matcher = Pattern.compile("DROP TABLE (\\w+);").matcher(input);
 
         //extract tableName
         String tableName;
@@ -380,7 +380,52 @@ public class ParserImplementation implements Parser
 
     private ParsedCommand parseAlter(String input) throws ParseException
     {
-        throw new UnsupportedOperationException("parseAlter has not been implemented yet.");
+
+        //Check for "ALTER TABLE <tableName>"
+        Matcher matcher = Pattern.compile("ALTER TABLE (\\w+) (.*);").matcher(input);
+
+        //extract tableName
+        String tableName;
+        String remainingText;
+
+        if (matcher.matches()) {
+
+            tableName = matcher.group(1).toLowerCase();
+            remainingText = matcher.group(2);
+
+            if (!isAlphanumeric(tableName)) {
+                throw new ParseException("Error: Table name \"" + tableName + "\" composed of non-alphanumeric characters");
+            }
+
+        }
+        else {
+            throw new ParseException("Error: Invalid command syntax.");
+        }
+
+        //Check for ADD or DROP
+        Matcher addMatcher = Pattern.compile("ADD \\((.*)\\);").matcher(remainingText);
+        Matcher dropMatcher = Pattern.compile("DROP \\((.*)\\);").matcher(remainingText);
+
+        if (addMatcher.matches()) {
+            remainingText = addMatcher.group(1);
+            return(parseAlterAdd(tableName, remainingText));
+        }
+        else if (dropMatcher.matches()) {
+            remainingText = dropMatcher.group(1);
+            return(parseAlterDrop(tableName, remainingText));
+        }
+        else {
+            throw new ParseException("Error: Invalid command syntax.");
+        }
+
+    }
+
+    private ParsedCommand parseAlterAdd(String tableName, String remainingText) throws ParseException {
+        throw new UnsupportedOperationException("parseAlterAdd has not been implemented yet.");
+    }
+
+    private ParsedCommand parseAlterDrop(String tableName, String remainingText) throws ParseException {
+        throw new UnsupportedOperationException("parseAlterDrop has not been implemented yet.");
     }
 
 }
