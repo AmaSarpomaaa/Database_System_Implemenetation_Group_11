@@ -62,7 +62,6 @@ public class ParserImplementation implements Parser
      */
     private boolean isAlphanumeric(String str)
     {
-
         for (int i = 0; i < str.length(); i++)
         {
             if (!Character.isLetterOrDigit(str.charAt(i)))
@@ -72,7 +71,6 @@ public class ParserImplementation implements Parser
         }
 
         return true;
-
     }
 
     private ParsedCommand parseCreate(String input) throws ParseException
@@ -147,7 +145,7 @@ public class ParserImplementation implements Parser
                     int start = attributeTypeStr.indexOf('(') + 1;
                     int end = attributeTypeStr.indexOf(')');
 
-                    int n = Integer.getInteger(attributeTypeStr.substring(start, end));
+                    int n = Integer.parseInt(attributeTypeStr.substring(start, end));
                     attributeType = Datatype.CHAR;
                     attributeTypeLength = n;
 
@@ -157,7 +155,7 @@ public class ParserImplementation implements Parser
                     int start = attributeTypeStr.indexOf('(') + 1;
                     int end = attributeTypeStr.indexOf(')');
 
-                    int n = Integer.getInteger(attributeTypeStr.substring(start, end));
+                    int n = Integer.parseInt(attributeTypeStr.substring(start, end));
                     attributeType = Datatype.VARCHAR;
                     attributeTypeLength = n;
                 }
@@ -260,7 +258,101 @@ public class ParserImplementation implements Parser
 
     private ParsedCommand parseInsert(String input) throws ParseException
     {
-        throw new UnsupportedOperationException("parseInsert has not been implemented yet.");
+
+        //Check for "INSERT <tableName> VALUES(<something>);"
+        Pattern pattern = Pattern.compile("INSERT (\\w+) VALUES *\\((.*)\\);");
+        Matcher matcher = pattern.matcher(input);
+
+        //extract tableName
+        String tableName;
+        String valuesString;
+
+        if (matcher.matches()) {
+
+            tableName = matcher.group(1).toLowerCase();
+            valuesString = matcher.group(2);
+
+            if (!isAlphanumeric(tableName)) {
+                throw new ParseException("Error: Table name \"" + tableName + "\" composed of non-alphanumeric characters");
+            }
+
+        }
+        else {
+            throw new ParseException("Error: Invalid command syntax.");
+        }
+
+        //extract values
+        InsertCommand command = new InsertCommand(tableName);
+
+        //a row possibly followed by a comma, the capturing group is a row
+        Matcher rowMatcher = Pattern.compile("((?:[^,\"]*(?:\"[^\"]*\")*)*),?").matcher(valuesString);
+
+        while (rowMatcher.find()) {
+
+            String row = rowMatcher.group(1).trim();
+
+            if (!row.isEmpty()) {
+
+                //a value possibly followed by a space, the capturing group is a value
+                Matcher valueMatcher = Pattern.compile("((?:[^ \"]*(?:\"[^\"]*\")*)*) ?").matcher(row);
+
+                while (valueMatcher.find()) {
+
+                    String value = valueMatcher.group(1);
+
+                    if (!value.isEmpty()) {
+
+                        //integer
+                        try {
+                            command.addInteger(Integer.parseInt(value));
+                            continue;
+                        }
+                        catch (NumberFormatException ignored) {}
+
+                        //double
+                        try {
+                            command.addDouble(Double.parseDouble(value));
+                            continue;
+                        }
+                        catch (NumberFormatException ignored) {}
+
+                        //boolean
+                        if (value.equals("True")) {
+                            command.addBoolean(true);
+                            continue;
+                        }
+                        else if (value.equals("False")) {
+                            command.addBoolean(false);
+                            continue;
+                        }
+
+                        //null
+                        if (value.equals("NULL")) {
+                            command.addNull();
+                            continue;
+                        }
+
+                        //string
+                        if (Pattern.matches("\".*\"", value)) {
+                            command.addString(value);
+                            continue;
+                        }
+
+                        //invalid data
+                        throw new ParseException("Error: \"" + value + "\" was not of a valid data type.");
+
+                    }
+
+                }
+
+            }
+
+            command.addRow();
+
+        }
+
+        return command;
+
     }
 
     private ParsedCommand parseDrop(String input) throws ParseException
