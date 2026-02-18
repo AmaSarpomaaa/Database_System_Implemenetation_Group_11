@@ -333,8 +333,10 @@ public class ParserImplementation implements Parser
                         }
 
                         //string
-                        if (Pattern.matches("\".*\"", value)) {
-                            command.addString(value);
+                        Matcher charMatcher = Pattern.compile("\"([^\"])\"").matcher(value);
+
+                        if (charMatcher.matches()) {
+                            command.addString(charMatcher.group(1));
                             continue;
                         }
 
