@@ -4,6 +4,11 @@ import model.Attribute;
 import model.Datatype;
 import model.ParsedCommand;
 import model.CreateTableCommand;
+import model.SimpleSelectCommand;
+import model.InsertCommand;
+import model.DropTableCommand;
+import model.AlterTableAddCommand;
+import model.AlterTableDropCommand;
 import util.ParseException;
 import java.util.ArrayList;
 import java.util.List;
@@ -72,7 +77,6 @@ public class ParserImplementation implements Parser
 
     private ParsedCommand parseCreate(String input) throws ParseException
     {
-        Scanner inputScanner = new Scanner(input);
 
         //Check for "CREATE TABLE <tableName> (<something>);
         Pattern pattern = Pattern.compile("CREATE TABLE (\\w+) *\\((.*)\\);");
@@ -83,8 +87,14 @@ public class ParserImplementation implements Parser
         String attributesString;
 
         if (matcher.matches()) {
+
             tableName = matcher.group(1).toLowerCase();
             attributesString = matcher.group(2);
+
+            if (!isAlphanumeric(tableName)) {
+                throw new ParseException("Error: Table name \"" + tableName + "\" composed of non-alphanumeric characters");
+            }
+
         }
         else {
             throw new ParseException("Error: Invalid command syntax.");
@@ -222,9 +232,30 @@ public class ParserImplementation implements Parser
 
     }
 
+    //Currently only does "SELECT * FROM <tableName>;"
     private ParsedCommand parseSelect(String input) throws ParseException
     {
-        throw new UnsupportedOperationException("parseSelect has not been implemented yet.");
+        //Check for "SELECT * FROM <tableName>;"
+        Pattern pattern = Pattern.compile("SELECT * FROM (\\w+);");
+        Matcher matcher = pattern.matcher(input);
+
+        //extract tableName
+        String tableName;
+
+        if (matcher.matches()) {
+
+            tableName = matcher.group(1).toLowerCase();
+
+            if (!isAlphanumeric(tableName)) {
+                throw new ParseException("Error: Table name \"" + tableName + "\" composed of non-alphanumeric characters");
+            }
+
+        }
+        else {
+            throw new ParseException("Error: Invalid command syntax.");
+        }
+
+        return new SimpleSelectCommand(tableName);
     }
 
     private ParsedCommand parseInsert(String input) throws ParseException
