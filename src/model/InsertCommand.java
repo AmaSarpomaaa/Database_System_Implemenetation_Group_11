@@ -79,7 +79,7 @@ public class InsertCommand extends ParsedCommand {
      * meant to be interpreted as Chars or Varchars.
      * @param value the string to be added.
      */
-    public void addString(double value) {
+    public void addString(String value) {
         addValue(Datatype.CHAR, value);
     }
 
