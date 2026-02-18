@@ -13,9 +13,11 @@ import parser.CommandType;
 public abstract class AlterTableCommand extends ParsedCommand {
 
     private final String tableName;
+    private final String attributeName;
 
-    public AlterTableCommand(String tableName) {
+    public AlterTableCommand(String tableName, String attributeName) {
         this.tableName = tableName;
+        this.attributeName = attributeName;
     }
 
     @Override
@@ -25,6 +27,10 @@ public abstract class AlterTableCommand extends ParsedCommand {
 
     public String getTableName() {
         return tableName;
+    }
+
+    public String getAttributeName() {
+        return attributeName;
     }
 
     /**
@@ -40,5 +46,4 @@ public abstract class AlterTableCommand extends ParsedCommand {
      * @return true if the command is a DROP command, false otherwise
      */
     public abstract boolean isDrop();
-
 }
