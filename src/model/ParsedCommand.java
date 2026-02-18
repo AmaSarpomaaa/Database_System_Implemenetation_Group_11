@@ -1,17 +1,17 @@
 package model;
 
-import parser.Condition;
-import java.util.List;
+//import parser.Condition;
+//import java.util.List;
 
-public interface ParsedCommand {
+public class ParsedCommand {
 
-    CommandType type();
+    private String tableName;
 
-    String tableName();
+    public ParsedCommand(String tableName) {
+        this.tableName = tableName;
+    }
 
-    List<String> projections();   // empty = SELECT *
-
-    Condition where();            // nullable
-
-    List<List<Value>> rows();     // for INSERT
+    String tableName() {
+        return tableName;
+    }
 }
