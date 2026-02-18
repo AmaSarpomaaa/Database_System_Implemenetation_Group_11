@@ -4,8 +4,8 @@ import parser.CommandType;
 
 public class CreateTableCommand extends ParsedCommand {
 
-    Attribute[] attributes;
-    String tableName;
+    private final Attribute[] attributes;
+    private final String tableName;
 
     public CreateTableCommand(String tableName, Attribute[] attributes) {
         this.tableName = tableName;
@@ -19,6 +19,10 @@ public class CreateTableCommand extends ParsedCommand {
 
     public String getTableName() {
         return tableName;
+    }
+
+    public Attribute[] getAttributes() {
+        return attributes;
     }
 
 }
