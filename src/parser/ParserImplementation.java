@@ -403,8 +403,8 @@ public class ParserImplementation implements Parser
         }
 
         //Check for ADD or DROP
-        Matcher addMatcher = Pattern.compile("ADD \\((.*)\\);").matcher(remainingText);
-        Matcher dropMatcher = Pattern.compile("DROP \\((.*)\\);").matcher(remainingText);
+        Matcher addMatcher = Pattern.compile("ADD (.*)").matcher(remainingText);
+        Matcher dropMatcher = Pattern.compile("DROP (.*)").matcher(remainingText);
 
         if (addMatcher.matches()) {
             remainingText = addMatcher.group(1);
@@ -421,7 +421,153 @@ public class ParserImplementation implements Parser
     }
 
     private ParsedCommand parseAlterAdd(String tableName, String remainingText) throws ParseException {
-        throw new UnsupportedOperationException("parseAlterAdd has not been implemented yet.");
+
+        //a value possibly followed by a space, the capturing group is a value
+        Matcher matcher = Pattern.compile("(\\w+) (INTEGER|DOUBLE|BOOLEAN|CHAR\\((\\d+)\\)|VARCHAR\\((\\d+)\\))((?: NOTNULL)?)((?: DEFAULT (.+))?)").matcher(remainingText);
+
+        //extract attributeName
+        String attributeName;
+        String attributeTypeStr;
+
+        if (matcher.matches()) {
+            attributeName = matcher.group(1);
+            attributeTypeStr = matcher.group(2);
+        }
+        else {
+            throw new ParseException("Error: ");
+        }
+
+        //attempt to extract DEFAULT value
+        boolean hasDefault = false;
+        String defaultStr = "";
+        Object defaultValue = null;
+
+        if (!matcher.group(6).isEmpty())
+        {
+            hasDefault = true;
+            defaultStr = matcher.group(7);
+
+            if (defaultStr.equals("NULL")) {
+                hasDefault = false;
+            }
+        }
+
+        //determine attribute type
+        Datatype attributeType;
+        int attributeTypeLength;
+
+        if (attributeTypeStr.equals("INTEGER")) {
+            attributeType = Datatype.INTEGER;
+            attributeTypeLength = -1;
+
+            //extract DEFAULT
+            if (hasDefault)
+            {
+                try {
+                    defaultValue = Integer.parseInt(defaultStr);
+                }
+                catch (NumberFormatException e) {
+                    throw new ParseException("Error: Default Value " + defaultStr + " was not an INTEGER.", e);
+                }
+            }
+        }
+        else if (attributeTypeStr.equals("DOUBLE")) {
+            attributeType = Datatype.DOUBLE;
+            attributeTypeLength = -1;
+
+            //extract DEFAULT
+            if (hasDefault)
+            {
+                try {
+                    defaultValue = Double.parseDouble(defaultStr);
+                }
+                catch (NumberFormatException e) {
+                    throw new ParseException("Error: Default Value " + defaultStr + " was not a DOUBLE.", e);
+                }
+            }
+        }
+        else if (attributeTypeStr.equals("BOOLEAN")) {
+            attributeType = Datatype.BOOLEAN;
+            attributeTypeLength = -1;
+
+            //extract DEFAULT
+            if (hasDefault)
+            {
+                try {
+                    defaultValue = Boolean.parseBoolean(defaultStr);
+                }
+                catch (NumberFormatException e) {
+                    throw new ParseException("Error: Default Value " + defaultStr + " was not a BOOLEAN.", e);
+                }
+            }
+        }
+        else if (Pattern.matches("CHAR\\(\\d+\\)", attributeTypeStr)) {   //matches CHAR(<a number>))
+            attributeType = Datatype.CHAR;
+            attributeTypeLength = Integer.parseInt(matcher.group(3));
+
+            //extract DEFAULT
+            if (hasDefault)
+            {
+                Matcher charMatcher = Pattern.compile("\"([^\"])\"").matcher(defaultStr);
+                String defaultValueStr;
+
+                if (charMatcher.matches()) {
+                    defaultValueStr = charMatcher.group(1);
+                }
+                else {
+                    throw new ParseException("Error: Default Value " + defaultStr + " was not a CHAR.");
+                }
+
+                if (defaultValueStr.length() != attributeTypeLength) {
+                    throw new ParseException("Error: Default Value " + defaultStr + " was not the right length (" + attributeTypeLength + ").");
+                }
+
+                defaultValue = defaultValueStr;
+            }
+        }
+        else if (Pattern.matches("VARCHAR\\(\\d+\\)", attributeTypeStr)) {   //matches VARCHAR(<a number>))
+            attributeType = Datatype.VARCHAR;
+            attributeTypeLength = Integer.parseInt(matcher.group(4));
+
+            //extract DEFAULT
+            if (hasDefault)
+            {
+                Matcher charMatcher = Pattern.compile("\"([^\"])\"").matcher(defaultStr);
+                String defaultValueStr;
+
+                if (charMatcher.matches()) {
+                    defaultValueStr = charMatcher.group(1);
+                }
+                else {
+                    throw new ParseException("Error: Default Value " + defaultStr + " was not a VARCHAR.");
+                }
+
+                if (defaultValueStr.length() > attributeTypeLength) {
+                    throw new ParseException("Error: Default Value " + defaultStr + " was longer than the maximum length of " + attributeTypeLength + ".");
+                }
+
+                defaultValue = defaultValueStr;
+            }
+        }
+        else {
+            //It shouldn't actually be possible to get here
+            throw new ParseException("Error: Attribute Type \"" + attributeTypeStr + "\" was not a valid type.");
+        }
+
+        //extract NOTNULL
+        boolean notNull = !matcher.group(5).isEmpty();
+
+        if (notNull && !hasDefault) {
+            throw new ParseException("Error: A NOTNULL attribute must have a non-NULL DEFAULT value.");
+        }
+
+        if (hasDefault) {
+            return new AlterTableAddCommand(tableName, attributeName, attributeType, notNull);
+        }
+        else {
+            return new AlterTableAddCommand(tableName, attributeName, attributeType, notNull, defaultValue);
+        }
+
     }
 
     private ParsedCommand parseAlterDrop(String tableName, String remainingText) throws ParseException {
