@@ -2,7 +2,7 @@ package model;
 
 import parser.CommandType;
 
-public class ParsedCommand {
+public abstract class ParsedCommand {
 
     protected String tableName;
     protected CommandType type;
