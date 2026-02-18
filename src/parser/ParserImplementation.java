@@ -357,7 +357,25 @@ public class ParserImplementation implements Parser
 
     private ParsedCommand parseDrop(String input) throws ParseException
     {
-        throw new UnsupportedOperationException("parseDrop has not been implemented yet.");
+        //Check for "Drop Table <tableName>;"
+        Matcher matcher = Pattern.compile("DROP Table (\\w+);").matcher(input);
+
+        //extract tableName
+        String tableName;
+
+        if (matcher.matches()) {
+
+            tableName = matcher.group(1).toLowerCase();
+            if (!isAlphanumeric(tableName)) {
+                throw new ParseException("Error: Table name \"" + tableName + "\" composed of non-alphanumeric characters");
+            }
+
+        }
+        else {
+            throw new ParseException("Error: Invalid command syntax.");
+        }
+
+        return new DropTableCommand(tableName);
     }
 
     private ParsedCommand parseAlter(String input) throws ParseException
