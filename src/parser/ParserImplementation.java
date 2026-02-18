@@ -425,7 +425,16 @@ public class ParserImplementation implements Parser
     }
 
     private ParsedCommand parseAlterDrop(String tableName, String remainingText) throws ParseException {
-        throw new UnsupportedOperationException("parseAlterDrop has not been implemented yet.");
+
+        String attributeName;
+        attributeName = remainingText;
+
+        if (!isAlphanumeric(attributeName)) {
+            throw new ParseException("Error: Attribute name \"" + attributeName + "\" composed of non-alphanumeric characters");
+        }
+
+        return new AlterTableDropCommand(tableName, attributeName);
+
     }
 
 }
