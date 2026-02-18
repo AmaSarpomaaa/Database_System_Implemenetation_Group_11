@@ -11,19 +11,9 @@ import parser.CommandType;
  */
 public abstract class ParsedCommand {
 
-    protected String tableName;
-
-    public ParsedCommand(String tableName) {
-        this.tableName = tableName;
-    }
-
     /**
      * @return the CommandType represented by this object's class
      */
     public abstract CommandType getType();
-
-    public String getTableName() {
-        return tableName;
-    }
 
 }
