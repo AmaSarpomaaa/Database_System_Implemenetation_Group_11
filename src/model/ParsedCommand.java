@@ -1,17 +1,23 @@
 package model;
 
-//import parser.Condition;
-//import java.util.List;
+import parser.CommandType;
 
 public class ParsedCommand {
 
-    private String tableName;
+    protected String tableName;
+    protected CommandType type;
 
-    public ParsedCommand(String tableName) {
+    public ParsedCommand(CommandType type, String tableName) {
+        this.type = type;
         this.tableName = tableName;
     }
 
-    String tableName() {
+    public CommandType getType() {
+        return type;
+    }
+
+    public String getTableName() {
         return tableName;
     }
+
 }
