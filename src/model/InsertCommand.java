@@ -21,6 +21,8 @@ public class InsertCommand extends ParsedCommand {
      * <br>
      * Strings always use Char for the Datatype regardless of whether they are
      * meant to be interpreted as Chars or Varchars.
+     * <br>
+     * Null values use null for both the Datatype and the value in the pair.
      */
     private List<List<Object[]>> values;
     private final String tableName;
@@ -38,6 +40,13 @@ public class InsertCommand extends ParsedCommand {
      */
     private void addValue(Datatype type, Object value) {
         values.get(values.size() - 1).add(new Object[] {type, value});
+    }
+
+    /**
+     * Adds a null value to the end of the last row in the list of values.
+     */
+    public void addNull() {
+        addValue(null, null);
     }
 
     /**
@@ -104,6 +113,8 @@ public class InsertCommand extends ParsedCommand {
      * <br>
      * Strings always use Char for the Datatype regardless of whether they are
      * meant to be interpreted as Chars or Varchars.
+     * <br>
+     * Null values use null for both the Datatype and the value in the pair.
      */
     public List<List<Object[]>> getValues() {
         return values;
