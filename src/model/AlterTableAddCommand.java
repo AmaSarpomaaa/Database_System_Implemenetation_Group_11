@@ -2,25 +2,21 @@ package model;
 
 public class AlterTableAddCommand extends AlterTableCommand {
 
-    private final Datatype dataType;
-    private final boolean notNull;
+    private final Attribute attribute;
     /**
      * defaultValue should always be of the type defined in dataType or null.
      * If there is no defaultValue, defaultValue is null.
      */
     private final Object defaultValue;
 
-    public AlterTableAddCommand(String tableName, String attributeName,
-                                Datatype dataType, boolean notNull, Object defaultValue) {
-        super(tableName, attributeName);
-        this.dataType = dataType;
-        this.notNull = notNull;
+    public AlterTableAddCommand(String tableName, Attribute attribute, Object defaultValue) {
+        super(tableName, attribute.name);
+        this.attribute = attribute;
         this.defaultValue = defaultValue;
     }
 
-    public AlterTableAddCommand(String tableName, String attributeName,
-                                Datatype dataType, boolean notNull) {
-        this(tableName, attributeName, dataType, notNull, null);
+    public AlterTableAddCommand(String tableName, Attribute attribute) {
+        this(tableName, attribute, null);
     }
 
     @Override
@@ -33,12 +29,16 @@ public class AlterTableAddCommand extends AlterTableCommand {
         return true;
     }
 
+    public Attribute getAttribute() {
+        return attribute;
+    }
+
     public Datatype getDataType() {
-        return dataType;
+        return attribute.type;
     }
 
     public boolean isNotNull() {
-        return notNull;
+        return attribute.not_null;
     }
 
     public boolean hasDefaultValue() {
