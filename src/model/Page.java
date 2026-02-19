@@ -38,4 +38,9 @@ public class Page {
     public int getPageId() {
         return page_Id;
     }
+
+    public boolean isFull(){
+            return false;
+    }
+
 }
