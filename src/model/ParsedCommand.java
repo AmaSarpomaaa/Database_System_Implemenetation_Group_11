@@ -1,17 +1,19 @@
 package model;
 
-import parser.Condition;
-import java.util.List;
+import parser.CommandType;
 
-public interface ParsedCommand {
+/**
+ * An abstract class to represent a parsed command.
+ * Each class inheriting from ParsedCommand should correspond to one type of
+ * command from the CommandType enum and should return that CommandType from
+ * the getType() method, so that that method always returns the type of
+ * command represented by the class.
+ */
+public abstract class ParsedCommand {
 
-//    CommandType type();
+    /**
+     * @return the CommandType represented by this object's class
+     */
+    public abstract CommandType getType();
 
-    String tableName();
-
-    List<String> projections();   // empty = SELECT *
-
-    Condition where();            // nullable
-
-    List<List<Value>> rows();     // for INSERT
 }
