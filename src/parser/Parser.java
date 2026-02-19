@@ -225,7 +225,7 @@ public class Parser
 
         }
 
-        return new CreateTableCommand(tableName, attributes.toArray());
+        return new CreateTableCommand(tableName, (Attribute[]) attributes.toArray());
 
     }
 
