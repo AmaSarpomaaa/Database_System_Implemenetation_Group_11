@@ -1,12 +1,8 @@
 package catalog;
 
 import buffer.BufferManager;
-import model.Page;
-import model.Table;
-import model.Datatype;
 import model.TableSchema;
 import model.Schema;
-import model.Attribute;
 import util.DBException;
 import java.util.*;
 
@@ -25,6 +21,10 @@ public class Catalog implements CatalogIN {
     }
 
     public void load() throws DBException {
+        return;
+    }
+
+    public void save() throws DBException {
         return;
     }
 
