@@ -48,7 +48,7 @@ public class TableSchema implements Table {
         }
 
         // One record per page until isFull() is implemented
-        Page newPage = new Page(pages.size());
+        Page newPage = new Page(1000, pages.size());
         newPage.addRecord(record);
         pages.addLast(newPage);
     }
