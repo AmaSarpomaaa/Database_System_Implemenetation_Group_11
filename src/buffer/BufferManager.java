@@ -1,10 +1,12 @@
 package buffer;
 
 import model.Page;
+import model.Record;
 import storage.StorageManager;
 import util.DBException;
 import java.util.*;
 import java.io.*;
+import java.nio.ByteBuffer;
 
 public class BufferManager {
     private int maxBufferSize;
@@ -119,10 +121,56 @@ public class BufferManager {
         }
     }
 
-    private byte[] serializePage(Page pag){
-        return new byte[pageSize];
+    private byte[] serializePage(Page page) {
+        byte[] data = new byte[pageSize];
+        ByteBuffer buffer = ByteBuffer.wrap(data);
+
+        List<Record> records = page.getRecords();
+        int numRecords = records.size();
+
+        buffer.putInt(0, numRecords);
+
+        int currentOffset = pageSize;
+
+        for (int i = 0; i < numRecords; i++) {
+            Record rec = records.get(i);
+            byte[] recBytes = serializeRecord(rec);
+
+            currentOffset = currentOffset - recBytes.length;
+
+            for(int j = 0; j < recBytes.length; j++) {
+                data[currentOffset + j] = recBytes[j];
+            }
+
+            int headerPos = 4 + (i * 4);
+            buffer.putInt(headerPos, currentOffset);
+        }
+
+        return data;
     }
-    private Page deserializePage(int pageId, byte[] data){
-        return new Page(pageId);
+
+    private Page deserializePage(int pageId, byte[] data) {
+        Page page = new Page(pageId);
+        ByteBuffer buffer = ByteBuffer.wrap(data);
+
+        int numRecords = buffer.getInt(0);
+
+        for (int i = 0; i < numRecords; i++) {
+            int headerPos = 4 + (i * 4);
+            int offset = buffer.getInt(headerPos);
+
+            Record rec = deserializeRecord(data, offset);
+            page.addRecord(rec);
+        }
+
+        return page;
+    }
+
+    private byte[] serializeRecord(Record rec) {
+        return new byte[0];
+    }
+
+    private Record deserializeRecord(byte[] data, int offset) {
+        return new Record();
     }
 }
