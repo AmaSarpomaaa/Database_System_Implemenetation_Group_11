@@ -1,9 +1,12 @@
 package DDL;
 
+import ddl.DDLProcessor;
 import model.*;
 import parser.ParsedCommand;
 import parser.CommandType;
 import util.DBException;
+
+import javax.xml.catalog.Catalog;
 import java.util.ArrayList;
 import java.util.List;
 
