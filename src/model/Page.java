@@ -8,7 +8,7 @@ public class Page {
     private int page_Id;
     private List<Record> records;  // Just a list of records
 
-    //TODO get size from buffer manager
+    //TODO get size from settings file
 
     public Page(int size, int pageid) {
         records = new ArrayList<>();
