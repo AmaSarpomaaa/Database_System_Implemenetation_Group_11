@@ -1,7 +1,9 @@
 package ddl;
 
+import buffer.BufferManager;
 import catalog.Catalog;
 import model.*;
+import storage.StorageManager;
 import util.DBException;
 
 import java.util.ArrayList;
@@ -11,18 +13,17 @@ import java.util.List;
 public class DDLParser implements DDLProcessor {
 
     private final Catalog catalog;
+    private final StorageManager storage;
+    private final BufferManager buffer;
 
     public DDLParser(Catalog catalog) {
         this.catalog = catalog;
+        this.storage = storage;
+        this.buffer = buffer;
     }
 
     @Override
-    public Result createTable(ParsedCommand cmd) throws DBException {
-        if (!(cmd instanceof CreateTableCommand)) {
-            throw new DBException("Internal error: expected CreateTableCommand.");
-        }
-
-        CreateTableCommand c = (CreateTableCommand) cmd;
+    public Result createTable(CreateTableCommand c) throws DBException {
         String tableName = c.getTableName();
 
         if (catalog.exists(tableName)) {
@@ -41,7 +42,7 @@ public class DDLParser implements DDLProcessor {
         }
 
         Schema schema = new Schema(attrs);
-        TableSchema table = new TableSchema(tableName, schema);
+        TableSchema table = new TableSchema(tableName, schema, storage, buffer);
 
         catalog.addTable(table);
 
@@ -49,12 +50,7 @@ public class DDLParser implements DDLProcessor {
     }
 
     @Override
-    public Result dropTable(ParsedCommand cmd) throws DBException {
-        if (!(cmd instanceof DropTableCommand)) {
-            throw new DBException("Internal error: expected DropTableCommand.");
-        }
-
-        DropTableCommand d = (DropTableCommand) cmd;
+    public Result dropTable(DropTableCommand d) throws DBException {
         String tableName = d.getTableName();
 
         if (!catalog.exists(tableName)) {
@@ -67,12 +63,7 @@ public class DDLParser implements DDLProcessor {
     }
 
     @Override
-    public Result alterTableAdd(ParsedCommand cmd) throws DBException {
-        if (!(cmd instanceof AlterTableAddCommand)) {
-            throw new DBException("Internal error: expected AlterTableAddCommand.");
-        }
-
-        AlterTableAddCommand a = (AlterTableAddCommand) cmd;
+    public Result alterTableAdd(AlterTableAddCommand a) throws DBException {
         String tableName = a.getTableName();
         Attribute newAttr = a.getAttribute();
 
@@ -99,14 +90,15 @@ public class DDLParser implements DDLProcessor {
         newAttrs.add(newAttr);
         Schema newSchema = new Schema(newAttrs);
 
-        TableSchema newTable = new TableSchema(tableName, newSchema);
+        TableSchema newTable = new TableSchema(tableName, newSchema, storage, buffer);
 
-        Object defaultVal = a.hasDefaultValue() ? a.getDefaultValue() : null;
+        Object defaultRaw = a.hasDefaultValue() ? a.getDefaultValue() : null;
+        Value defaultVal = new Value(defaultRaw);
 
         // copy records, append default
         for (model.Record rOld : oldT.scan()) {
             model.Record rNew = new model.Record();
-            for (Object v : rOld.getAttributes()) {
+            for (Value v : rOld.getAttributes()) {
                 rNew.addAttribute(v);
             }
             rNew.addAttribute(defaultVal);
@@ -120,12 +112,7 @@ public class DDLParser implements DDLProcessor {
     }
 
     @Override
-    public Result alterTableDrop(ParsedCommand cmd) throws DBException {
-        if (!(cmd instanceof AlterTableDropCommand)) {
-            throw new DBException("Internal error: expected AlterTableDropCommand.");
-        }
-
-        AlterTableDropCommand d = (AlterTableDropCommand) cmd;
+    public Result alterTableDrop(AlterTableDropCommand d) throws DBException {
         String tableName = d.getTableName();
         String attrName = d.getAttributeName();
 
@@ -157,7 +144,7 @@ public class DDLParser implements DDLProcessor {
         }
         Schema newSchema = new Schema(newAttrs);
 
-        TableSchema newTable = new TableSchema(tableName, newSchema);
+        TableSchema newTable = new TableSchema(tableName, newSchema, engine.getStorage(), engine.getBuffer());
 
         // copy records skipping dropped value
         for (model.Record rOld : oldT.scan()) {

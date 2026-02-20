@@ -63,7 +63,8 @@ public class Schema {
         // Check each attribute
         for (int i = 0; i < attributeList.size(); i++) {
             Attribute attr = attributeList.get(i);
-            Object value = values.get(i);
+            Value vObj = values.get(i);
+            Object value = (vObj == null) ? null : vObj.getRaw();
 
             // Check NOT NULL constraint
             if (value == null && attr.not_null) {

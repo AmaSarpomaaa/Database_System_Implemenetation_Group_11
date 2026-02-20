@@ -1,18 +1,17 @@
 package catalog;
 
+import buffer.BufferManager;
 import model.*;
+import storage.StorageManager;
 import util.DBException;
 
 import java.io.*;
 import java.util.*;
 
 /**
- * Phase 1 Catalog implementation:
- * - Keeps tables in memory during runtime
- * - Persists table schemas to a catalog file on shutdown
+ * Catalog implementation:
+ * - Persists table schemas AND the table's pageIds
  * - Reloads them on startup
- *
- * Data pages/records are NOT persisted here (Phase 1 usually only requires schema/catalog persistence).
  */
 public class FileCatalog implements Catalog {
 
@@ -20,7 +19,6 @@ public class FileCatalog implements Catalog {
     private final Map<String, Table> tables = new HashMap<>();
 
     public FileCatalog(String dbLocation) {
-        // You can pick any extension you like
         this.catalogFile = new File(dbLocation + ".catalog");
     }
 
@@ -29,7 +27,7 @@ public class FileCatalog implements Catalog {
         tables.clear();
 
         if (!catalogFile.exists() || catalogFile.length() == 0) {
-            return; // nothing to load
+            return;
         }
 
         try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(catalogFile)))) {
@@ -53,9 +51,15 @@ public class FileCatalog implements Catalog {
 
                 Schema schema = new Schema(attrs);
 
-                // For Phase 1 you can rebuild an in-memory TableSchema.
-                // Later you’ll create a real Table implementation that uses Buffer/Storage.
-                Table table = new TableSchema(tableName, schema);
+                // ✅ NEW: load pageIds
+                int pageCount = in.readInt();
+                List<Integer> pageIds = new ArrayList<>();
+                for (int i = 0; i < pageCount; i++) {
+                    pageIds.add(in.readInt());
+                }
+
+                // Create table WITHOUT storage/buffer; bind later in engine.startup()
+                Table table = new TableSchema(tableName, schema, pageIds);
 
                 tables.put(tableName.toLowerCase(), table);
             }
@@ -83,10 +87,28 @@ public class FileCatalog implements Catalog {
                     out.writeBoolean(a.isPrimaryKey());
                     out.writeUTF(a.getType().name());
                 }
+
+                // ✅ NEW: save pageIds so data persists
+                if (table instanceof TableSchema ts) {
+                    List<Integer> pids = ts.getPageIds();
+                    out.writeInt(pids.size());
+                    for (int pid : pids) out.writeInt(pid);
+                } else {
+                    out.writeInt(0);
+                }
             }
 
         } catch (IOException e) {
             throw new DBException("Failed to save catalog to: " + catalogFile.getName(), e);
+        }
+    }
+
+    // ✅ Bind storage/buffer into loaded tables after startup()
+    public void bind(StorageManager storage, BufferManager buffer) {
+        for (Table t : tables.values()) {
+            if (t instanceof TableSchema ts) {
+                ts.bind(storage, buffer);
+            }
         }
     }
 

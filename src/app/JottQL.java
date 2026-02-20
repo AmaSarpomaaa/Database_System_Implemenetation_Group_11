@@ -6,6 +6,7 @@ import util.DBException;
 
 import java.io.File;
 import java.util.Scanner;
+import model.Result;
 
 public class JottQL {
 
@@ -77,9 +78,17 @@ public class JottQL {
                 break;
             }
 
-            // Phase 1 execution will be added in Step 3/4.
-            // For now: accept commands and acknowledge.
-            System.out.println("Command received.");
+            try {
+                SimpleDBEngine simpleEngine = (SimpleDBEngine) engine;
+                Result result = simpleEngine.execute(statement);
+
+                if (result != null && result.getMessage() != null) {
+                    System.out.println(result.getMessage());
+                }
+
+            } catch (DBException e) {
+                System.out.println("Error: " + e.getMessage());
+            }
         }
 
         sc.close();

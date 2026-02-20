@@ -1,20 +1,47 @@
 package model;
 
+import buffer.BufferManager;
+import storage.StorageManager;
 import util.DBException;
+
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
 
 public class TableSchema implements Table {
 
     private final String name;
     private final Schema schema;
-    private final LinkedList<Page> pages;
 
-    public TableSchema(String name, Schema schema) {
+    // ✅ Persist this list via FileCatalog
+    private final List<Integer> pageIds = new ArrayList<>();
+
+    // ✅ Bound at runtime so we can read/write pages
+    private StorageManager storage;
+    private BufferManager buffer;
+
+    // ✅ Used when CREATING a table at runtime
+    public TableSchema(String name, Schema schema, StorageManager storage, BufferManager buffer) {
         this.name = name;
         this.schema = schema;
-        this.pages = new LinkedList<Page>();
+        this.storage = storage;
+        this.buffer = buffer;
+    }
+
+    // ✅ Used when LOADING from catalog file (bind storage/buffer later)
+    public TableSchema(String name, Schema schema, List<Integer> pageIds) {
+        this.name = name;
+        this.schema = schema;
+        if (pageIds != null) this.pageIds.addAll(pageIds);
+    }
+
+    // ✅ Called after catalog.load() in startup()
+    public void bind(StorageManager storage, BufferManager buffer) {
+        this.storage = storage;
+        this.buffer = buffer;
+    }
+
+    public List<Integer> getPageIds() {
+        return pageIds;
     }
 
     @Override
@@ -29,35 +56,50 @@ public class TableSchema implements Table {
 
     @Override
     public void insert(Record record) throws DBException {
-        // Validate types
+        if (storage == null || buffer == null) {
+            throw new DBException("Table not bound to storage/buffer");
+        }
+
+        // Validate record size + types + not null
         schema.validate(record);
 
-        // Check primary key is unique
+        // Primary key uniqueness (scan existing pages)
         Attribute pk = schema.getPrimaryKey();
         if (pk != null) {
             int pkIndex = schema.getAttributeIndex(pk.getName());
-            Object pkValue = record.getAttributes().get(pkIndex);
-            for (Page page : pages) {
-                for (Record existing : page.getRecords()) {
-                    Object existingPk = existing.getAttributes().get(pkIndex);
+            Object pkValue = record.getAttributes().get(pkIndex).getRaw();
+
+            for (int pid : pageIds) {
+                Page p = buffer.getPage(pid);
+                for (Record existing : p.getRecords()) {
+                    Object existingPk = existing.getAttributes().get(pkIndex).getRaw();
                     if (pkValue != null && pkValue.equals(existingPk)) {
-                        throw new DBException("Primary key violation on attribute: " + pk.getName());
+                        // Match your expected style (you can adjust message later)
+                        throw new DBException("duplicate primary key value: ( " + pkValue + " )");
                     }
                 }
             }
         }
 
-        // One record per page until isFull() is implemented
-        Page newPage = new Page(pages.size());
-        newPage.addRecord(record);
-        pages.addLast(newPage);
+        // ✅ Phase 1 simplification: 1 record per page
+        int pid = storage.allocatePage();
+        pageIds.add(pid);
+
+        Page p = buffer.getPage(pid);     // loads empty page bytes -> Page with 0 records
+        p.addRecord(record);
+        buffer.markDirty(pid);            // ensures flushAll writes it to disk
     }
 
     @Override
     public List<Record> scan() throws DBException {
+        if (storage == null || buffer == null) {
+            throw new DBException("Table not bound to storage/buffer");
+        }
+
         List<Record> result = new ArrayList<>();
-        for (Page page : pages) {
-            result.addAll(page.getRecords());
+        for (int pid : pageIds) {
+            Page p = buffer.getPage(pid);
+            result.addAll(p.getRecords());
         }
         return result;
     }
