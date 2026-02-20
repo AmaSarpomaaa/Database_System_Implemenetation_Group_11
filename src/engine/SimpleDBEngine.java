@@ -74,7 +74,7 @@ public class SimpleDBEngine implements DBEngine {
             throw new DBException(e.getMessage());
         }
 
-        DDLParser ddl = new DDLParser(catalog);
+        DDLParser ddl = new DDLParser(catalog, storage, buffer);
 
         // ---------- DDL ----------
         if (cmd instanceof CreateTableCommand) return ddl.createTable((CreateTableCommand) cmd);

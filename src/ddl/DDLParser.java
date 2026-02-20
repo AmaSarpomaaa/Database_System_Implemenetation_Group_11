@@ -16,7 +16,7 @@ public class DDLParser implements DDLProcessor {
     private final StorageManager storage;
     private final BufferManager buffer;
 
-    public DDLParser(Catalog catalog) {
+    public DDLParser(Catalog catalog, StorageManager storage, BufferManager buffer) {
         this.catalog = catalog;
         this.storage = storage;
         this.buffer = buffer;
@@ -144,7 +144,7 @@ public class DDLParser implements DDLProcessor {
         }
         Schema newSchema = new Schema(newAttrs);
 
-        TableSchema newTable = new TableSchema(tableName, newSchema, engine.getStorage(), engine.getBuffer());
+        TableSchema newTable = new TableSchema(tableName, newSchema, storage, buffer);
 
         // copy records skipping dropped value
         for (model.Record rOld : oldT.scan()) {
