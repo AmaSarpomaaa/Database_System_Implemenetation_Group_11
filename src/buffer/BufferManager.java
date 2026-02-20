@@ -214,7 +214,9 @@ public class BufferManager{
         // Type dependent with size
         // An integer [1, 2, 3] is placed within the byteBuffer which indicates the type of the attribute
         for (int i = 0; i < attributes.size(); i++){
-            Object obj = attributes.get(i);
+            Value obje = attributes.get(i);
+            Object obj = obje.getRaw();
+
             if (obj instanceof Integer){
                 bufferz.put((byte) 1);
                 bufferz.putInt((Integer) obj);
