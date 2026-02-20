@@ -2,6 +2,7 @@ package buffer;
 
 import model.Page;
 import model.Record;
+import model.Value;
 import storage.StorageManager;
 import util.DBException;
 import java.util.*;
@@ -183,7 +184,7 @@ public class BufferManager{
      */
     private byte[] serializeRecord(Record rec){
         // Extract attributes from given record
-        List<Object> attributes = rec.getAttributes();
+        List<Value> attributes = rec.getAttributes();
         // counter for number of bytes needed to store complete record in a byte[]
         int totSize = 4;
 
@@ -191,7 +192,8 @@ public class BufferManager{
         for (int i = 0; i < attributes.size(); i++){
             // Check type of attribute to get needed size for bytebuffer (String, Double, Integer)
             // num of bytes needed for type of attribute
-            Object obj = attributes.get(i);
+            Value obje = attributes.get(i);
+            Object obj = obje.getRaw();
             totSize = totSize + 1;
             if (obj instanceof Integer){
                 totSize = totSize + 4;
@@ -254,11 +256,11 @@ public class BufferManager{
 
             if (type == 1){
                 int val = bufferz.getInt();
-                rec.addAttribute(val);
+                rec.addAttribute(new Value(val));
             }
             else if (type == 2){
                 double val = bufferz.getDouble();
-                rec.addAttribute(val);
+                rec.addAttribute(new Value(val));
             }
             else if (type == 3){
                 int len = bufferz.getInt();
@@ -267,7 +269,7 @@ public class BufferManager{
                     strBytes[j] = bufferz.get();
                 }
                 String val = new String(strBytes);
-                rec.addAttribute(val);
+                rec.addAttribute(new Value(val));
             }
         }
         return rec;
