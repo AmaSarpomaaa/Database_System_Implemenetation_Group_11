@@ -12,4 +12,9 @@ public class Attribute {
         unique = uniq;
         type = typ;
     }
+
+    public String getName() { return name; }
+    public boolean isNotNull() { return not_null; }
+    public boolean isPrimaryKey() { return unique; }
+    public Datatype getType() { return type; }
 }

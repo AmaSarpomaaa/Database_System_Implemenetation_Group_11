@@ -1,24 +1,22 @@
-package DDL;
+package ddl;
 
-import ddl.DDLProcessor;
 import model.*;
-import parser.ParsedCommand;
-import parser.CommandType;
+import model.ParsedCommand;
 import util.DBException;
 
-import javax.xml.catalog.Catalog;
+import catalog.Catalog;
 import java.util.ArrayList;
 import java.util.List;
 
-public class ddlParser implements DDLProcessor {
+public class ddl_parser {
 
-    private final Catalog catalog;
+    private Catalog catalog;
 
-    public ddlParser(Catalog catalog) {
+    public ddl_parser(Catalog catalog) {
         this.catalog = catalog;
     }
 
-    @Override
+
     public Result createTable(ParsedCommand cmd) throws DBException {
         String tableName = cmd.getTableNames().get(0);
 

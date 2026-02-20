@@ -35,13 +35,13 @@ public class TableSchema implements Table {
         // Check primary key is unique
         Attribute pk = schema.getPrimaryKey();
         if (pk != null) {
-            int pkIndex = schema.getAttributeIndex(pk.name());
+            int pkIndex = schema.getAttributeIndex(pk.getName());
             Object pkValue = record.getAttributes().get(pkIndex);
             for (Page page : pages) {
                 for (Record existing : page.getRecords()) {
                     Object existingPk = existing.getAttributes().get(pkIndex);
                     if (pkValue != null && pkValue.equals(existingPk)) {
-                        throw new DBException("Primary key violation on attribute: " + pk.name());
+                        throw new DBException("Primary key violation on attribute: " + pk.getName());
                     }
                 }
             }

@@ -1,6 +1,8 @@
 package model;
 
 import util.DBException;
+
+import java.util.ArrayList;
 import java.util.List;
 
 public class Schema {
@@ -35,6 +37,10 @@ public class Schema {
         return -1;
     }
 
+    public List<Attribute> getAttributes() {
+        return (attributeList);
+    }
+
     /**
      * Check if an attribute with the given name exists
      */
@@ -47,7 +53,7 @@ public class Schema {
      * Checks: correct number of values, type compatibility, NOT NULL constraints.
      */
     public void validate(Record record) throws DBException {
-        List<Object> values = record.getAttributes();
+        List<Value> values = record.getAttributes();
 
         // Check arity
         if (values.size() != attributeList.size()) {

@@ -1,27 +1,38 @@
 package app;
 
+import engine.DBEngine;
+import engine.SimpleDBEngine;
+import util.DBException;
+
 import java.io.File;
 import java.util.Scanner;
 
-/**
- * MAIN ENTRY POINT – STUB VERSION
- * Behaves like the sample session but does NOT implement real DB logic yet.
- */
 public class JottQL {
 
     public static void main(String[] args) {
 
         if (args.length != 4) {
-            System.out.println("Usage: java JottQL <dbLocation> <pageSize> <bufferSize> <indexingEnabled>");
+            System.out.println("Usage: java JottQL <dbLocation> <pageSize> <bufferSize> <indexing>");
             return;
         }
 
         String dbLocation = args[0];
-        String pageSize   = args[1];
-        String bufferSize = args[2];
-        String indexing   = args[3];
 
-        // ===== STARTUP MESSAGES (match sample) =====
+        int pageSize;
+        int bufferSize;
+        boolean indexingEnabled;
+
+        try {
+            pageSize = Integer.parseInt(args[1]);
+            bufferSize = Integer.parseInt(args[2]);
+            indexingEnabled = Boolean.parseBoolean(args[3]);
+        } catch (Exception e) {
+            System.out.println("Error: invalid arguments.");
+            System.out.println("Usage: java JottQL <dbLocation> <pageSize:int> <bufferSize:int> <indexing:true|false>");
+            return;
+        }
+
+        // ===== STARTUP MESSAGES =====
         System.out.println("\nWelcome to JottQL!");
         System.out.println("Accessing database location....");
 
@@ -34,23 +45,41 @@ public class JottQL {
             System.out.println("Ignoring provided page size. Using prior size of " + pageSize + "....");
         }
 
-        // ===== BEGIN REPL =====
+        // ===== REAL STARTUP =====
+        DBEngine engine = new SimpleDBEngine();
+        try {
+            engine.startup(dbLocation, pageSize, bufferSize, indexingEnabled);
+        } catch (DBException e) {
+            System.out.println("Fatal startup error: " + e.getMessage());
+            return;
+        }
+
+        // ===== REPL =====
         Scanner sc = new Scanner(System.in);
 
         while (true) {
             System.out.print("\nJottQL> ");
-
             if (!sc.hasNextLine()) break;
 
             String statement = readStatement(sc);
 
             if (statement.equalsIgnoreCase("<QUIT>")) {
-                shutdown();
+                // Spec-required shutdown prints
+                System.out.println("Purging page buffer....");
+                System.out.println("Writing catalog to hardware....");
+                System.out.println("Shutting down the database...");
+
+                try {
+                    engine.shutdown();
+                } catch (DBException e) {
+                    System.out.println("Shutdown error: " + e.getMessage());
+                }
                 break;
             }
 
-            // ===== FAKE EXECUTION ROUTING =====
-            handleStubExecution(statement);
+            // Phase 1 execution will be added in Step 3/4.
+            // For now: accept commands and acknowledge.
+            System.out.println("Command received.");
         }
 
         sc.close();
@@ -60,11 +89,13 @@ public class JottQL {
      * Reads possibly multi-line SQL until ';'
      */
     private static String readStatement(Scanner sc) {
-
         StringBuilder sb = new StringBuilder();
 
         while (true) {
-            String line = sc.nextLine().trim();
+            String line = sc.nextLine();
+
+            if (line == null) return "";
+            line = line.trim();
 
             if (line.equalsIgnoreCase("<QUIT>")) {
                 return "<QUIT>";
@@ -78,75 +109,5 @@ public class JottQL {
 
             System.out.print("... ");
         }
-    }
-
-    /**
-     * Fake command handling that imitates sample output
-     */
-    private static void handleStubExecution(String sql) {
-
-        String up = sql.toUpperCase();
-
-        // ---- SELECT ----
-        if (up.startsWith("SELECT")) {
-            System.out.println("\n| x |");
-            return;
-        }
-
-        // ---- CREATE TABLE ----
-        if (up.startsWith("CREATE TABLE")) {
-            System.out.println("Table created successfully");
-            return;
-        }
-
-        // ---- INSERT ----
-        if (up.startsWith("INSERT")) {
-
-            // Fake detection of duplicate PK
-            if (sql.contains("4")) {
-                System.out.println("Error: duplicate primary key value: ( 4 )");
-                System.out.println("0 rows inserted successfully");
-                return;
-            }
-
-            // Fake success
-            System.out.println("1 rows inserted successfully");
-            return;
-        }
-
-        // ---- ALTER TABLE ----
-        if (up.startsWith("ALTER TABLE")) {
-
-            if (up.contains("NOTNULL") && !up.contains("DEFAULT")) {
-                System.out.println("Error: Not null requires a default value when altering a table");
-                return;
-            }
-
-            if (up.contains("DROP X")) {
-                System.out.println("Error: Cannot drop primary key attribute");
-                return;
-            }
-
-            System.out.println("Table altered successfully");
-            return;
-        }
-
-        // ---- DROP TABLE ----
-        if (up.startsWith("DROP TABLE")) {
-            System.out.println("Table dropped successfully");
-            return;
-        }
-
-        // ---- DEFAULT ----
-        System.out.println("Command received (stub).");
-    }
-
-    /**
-     * Shutdown prints matching sample
-     */
-    private static void shutdown() {
-        System.out.println("Purging page buffer....");
-        System.out.println("Writing catalog to hardware....");
-        System.out.println("Shutting down the database...");
     }
 }

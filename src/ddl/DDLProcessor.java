@@ -1,16 +1,11 @@
 package ddl;
 
-import model.ParsedCommand;
-import model.Result;
+import model.*;
 import util.DBException;
 
 public interface DDLProcessor {
-
-    Result createTable(ParsedCommand cmd) throws DBException;
-
-    Result dropTable(ParsedCommand cmd) throws DBException;
-
-    Result alterTableAdd(ParsedCommand cmd) throws DBException;
-
-    Result alterTableDrop(ParsedCommand cmd) throws DBException;
+    Result createTable(CreateTableCommand cmd) throws DBException;
+    Result dropTable(DropTableCommand cmd) throws DBException;
+    Result alterTableAdd(AlterTableAddCommand cmd) throws DBException;
+    Result alterTableDrop(AlterTableDropCommand cmd) throws DBException;
 }
