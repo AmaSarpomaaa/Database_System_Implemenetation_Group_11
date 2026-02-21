@@ -43,12 +43,12 @@ public class ParserImplementation implements Parser
                 case "INSERT" -> parseInsert(input);
                 case "DROP" -> parseDrop(input);
                 case "ALTER" -> parseAlter(input);
-                default -> throw new ParseException("Error: invalid command");
+                default -> throw new ParseException("Invalid command");
             };
         }
         else
         {
-            throw new ParseException("Error: empty input");
+            throw new ParseException("Empty input");
         }
     }
 
@@ -89,12 +89,12 @@ public class ParserImplementation implements Parser
             attributesString = matcher.group(2);
 
             if (!isAlphanumeric(tableName)) {
-                throw new ParseException("Error: Table name \"" + tableName + "\" composed of non-alphanumeric characters");
+                throw new ParseException("Table name \"" + tableName + "\" composed of non-alphanumeric characters");
             }
 
         }
         else {
-            throw new ParseException("Error: Invalid command syntax.");
+            throw new ParseException("Invalid command syntax.");
         }
 
         //extract attributes
@@ -113,7 +113,7 @@ public class ParserImplementation implements Parser
             boolean notNull;
 
             if (attributeSplit.length < 2) {
-                throw new ParseException("Error: Attribute missing name or type in \"" + attributeString + "\"");
+                throw new ParseException("Attribute missing name or type in \"" + attributeString + "\"");
             }
             else if (attributeSplit.length < 5) {
 
@@ -121,7 +121,7 @@ public class ParserImplementation implements Parser
                 attributeName = attributeSplit[0].toLowerCase();
 
                 if (!isAlphanumeric(attributeName)) {
-                    throw new ParseException("Error: Attribute name \"" + attributeName + "\" composed of non-alphanumeric characters");
+                    throw new ParseException("Attribute name \"" + attributeName + "\" composed of non-alphanumeric characters");
                 }
 
                 //extract attribute type
@@ -159,7 +159,7 @@ public class ParserImplementation implements Parser
                     attributeTypeLength = n;
                 }
                 else {
-                    throw new ParseException("Error: Attribute Type \"" + attributeTypeStr + "\" was not a valid type.");
+                    throw new ParseException("Attribute Type \"" + attributeTypeStr + "\" was not a valid type.");
                 }
 
                 //extract attribute constraints
@@ -178,7 +178,7 @@ public class ParserImplementation implements Parser
                         isPrimaryKey = false;
                     }
                     else {
-                        throw new ParseException("Error: Attribute constraint \"" + attributeSplit[2] + "\" was not a valid constraint.");
+                        throw new ParseException("Attribute constraint \"" + attributeSplit[2] + "\" was not a valid constraint.");
                     }
                 }
                 else { // attributeSplit.length == 4
@@ -195,7 +195,7 @@ public class ParserImplementation implements Parser
                         notNull = true;
                     }
                     else {
-                        throw new ParseException("Error: Attribute constraint \"" + attributeSplit[2] + "\" was not a valid constraint.");
+                        throw new ParseException("Attribute constraint \"" + attributeSplit[2] + "\" was not a valid constraint.");
                     }
 
                     if (attributeSplit[3].equals("PRIMARYKEY")) {
@@ -205,11 +205,11 @@ public class ParserImplementation implements Parser
                         notNull = true;
                     }
                     else {
-                        throw new ParseException("Error: Attribute constraint \"" + attributeSplit[2] + "\" was not a valid constraint.");
+                        throw new ParseException("Attribute constraint \"" + attributeSplit[2] + "\" was not a valid constraint.");
                     }
 
                     if (attributeSplit[2].equals(attributeSplit[3])) {
-                        throw new ParseException("Error: Duplicate attribute constraints in \"" + attributeString + "\".");
+                        throw new ParseException("Duplicate attribute constraints in \"" + attributeString + "\".");
                     }
 
                 }
@@ -217,7 +217,7 @@ public class ParserImplementation implements Parser
             }
             else
             {
-                throw new ParseException("Error: Attribute \"" + attributeString + "\" included more than 4 pieces of information");
+                throw new ParseException("Attribute \"" + attributeString + "\" included more than 4 pieces of information");
             }
 
             Attribute attribute = new Attribute(attributeName, notNull, isPrimaryKey, attributeType);
@@ -253,12 +253,12 @@ public class ParserImplementation implements Parser
             tableName = matcher.group(1).toLowerCase();
 
             if (!isAlphanumeric(tableName)) {
-                throw new ParseException("Error: Table name \"" + tableName + "\" composed of non-alphanumeric characters");
+                throw new ParseException("Table name \"" + tableName + "\" composed of non-alphanumeric characters");
             }
 
         }
         else {
-            throw new ParseException("Error: Invalid command syntax.");
+            throw new ParseException("Invalid command syntax.");
         }
 
         return new SimpleSelectCommand(tableName);
@@ -281,12 +281,12 @@ public class ParserImplementation implements Parser
             valuesString = matcher.group(2);
 
             if (!isAlphanumeric(tableName)) {
-                throw new ParseException("Error: Table name \"" + tableName + "\" composed of non-alphanumeric characters");
+                throw new ParseException("Table name \"" + tableName + "\" composed of non-alphanumeric characters");
             }
 
         }
         else {
-            throw new ParseException("Error: Invalid command syntax.");
+            throw new ParseException("Invalid command syntax.");
         }
 
         //extract values
@@ -349,7 +349,7 @@ public class ParserImplementation implements Parser
                         }
 
                         //invalid data
-                        throw new ParseException("Error: \"" + value + "\" was not of a valid data type.");
+                        throw new ParseException("\"" + value + "\" was not of a valid data type.");
 
                     }
 
@@ -377,12 +377,12 @@ public class ParserImplementation implements Parser
 
             tableName = matcher.group(1).toLowerCase();
             if (!isAlphanumeric(tableName)) {
-                throw new ParseException("Error: Table name \"" + tableName + "\" composed of non-alphanumeric characters");
+                throw new ParseException("Table name \"" + tableName + "\" composed of non-alphanumeric characters");
             }
 
         }
         else {
-            throw new ParseException("Error: Invalid command syntax.");
+            throw new ParseException("Invalid command syntax.");
         }
 
         return new DropTableCommand(tableName);
@@ -404,12 +404,12 @@ public class ParserImplementation implements Parser
             remainingText = matcher.group(2);
 
             if (!isAlphanumeric(tableName)) {
-                throw new ParseException("Error: Table name \"" + tableName + "\" composed of non-alphanumeric characters");
+                throw new ParseException("Table name \"" + tableName + "\" composed of non-alphanumeric characters");
             }
 
         }
         else {
-            throw new ParseException("Error: Invalid command syntax.");
+            throw new ParseException("Invalid command syntax.");
         }
 
         //Check for ADD or DROP
@@ -425,7 +425,7 @@ public class ParserImplementation implements Parser
             return(parseAlterDrop(tableName, remainingText));
         }
         else {
-            throw new ParseException("Error: Invalid command syntax.");
+            throw new ParseException("Invalid command syntax.");
         }
 
     }
@@ -444,7 +444,7 @@ public class ParserImplementation implements Parser
             attributeTypeStr = matcher.group(2);
         }
         else {
-            throw new ParseException("Error: ");
+            throw new ParseException("Invalid command format.");
         }
 
         //attempt to extract DEFAULT value
@@ -477,7 +477,7 @@ public class ParserImplementation implements Parser
                     defaultValue = Integer.parseInt(defaultStr);
                 }
                 catch (NumberFormatException e) {
-                    throw new ParseException("Error: Default Value " + defaultStr + " was not an INTEGER.", e);
+                    throw new ParseException("Default Value " + defaultStr + " was not an INTEGER.", e);
                 }
             }
         }
@@ -492,7 +492,7 @@ public class ParserImplementation implements Parser
                     defaultValue = Double.parseDouble(defaultStr);
                 }
                 catch (NumberFormatException e) {
-                    throw new ParseException("Error: Default Value " + defaultStr + " was not a DOUBLE.", e);
+                    throw new ParseException("Default Value " + defaultStr + " was not a DOUBLE.", e);
                 }
             }
         }
@@ -507,7 +507,7 @@ public class ParserImplementation implements Parser
                     defaultValue = Boolean.parseBoolean(defaultStr);
                 }
                 catch (NumberFormatException e) {
-                    throw new ParseException("Error: Default Value " + defaultStr + " was not a BOOLEAN.", e);
+                    throw new ParseException("Default Value " + defaultStr + " was not a BOOLEAN.", e);
                 }
             }
         }
@@ -526,11 +526,11 @@ public class ParserImplementation implements Parser
                 }
                 else {
                     System.out.println("Default: " + defaultStr);
-                    throw new ParseException("Error: Default Value " + defaultStr + " was not a CHAR.");
+                    throw new ParseException("Default Value " + defaultStr + " was not a CHAR.");
                 }
 
                 if (defaultValueStr.length() != attributeTypeLength) {
-                    throw new ParseException("Error: Default Value " + defaultStr + " was not the right length (" + attributeTypeLength + ").");
+                    throw new ParseException("Default Value " + defaultStr + " was not the right length (" + attributeTypeLength + ").");
                 }
 
                 defaultValue = defaultValueStr;
@@ -550,11 +550,11 @@ public class ParserImplementation implements Parser
                     defaultValueStr = charMatcher.group(1);
                 }
                 else {
-                    throw new ParseException("Error: Default Value " + defaultStr + " was not a VARCHAR.");
+                    throw new ParseException("Default Value " + defaultStr + " was not a VARCHAR.");
                 }
 
                 if (defaultValueStr.length() > attributeTypeLength) {
-                    throw new ParseException("Error: Default Value " + defaultStr + " was longer than the maximum length of " + attributeTypeLength + ".");
+                    throw new ParseException("Default Value " + defaultStr + " was longer than the maximum length of " + attributeTypeLength + ".");
                 }
 
                 defaultValue = defaultValueStr;
@@ -562,14 +562,14 @@ public class ParserImplementation implements Parser
         }
         else {
             //It shouldn't actually be possible to get here
-            throw new ParseException("Error: Attribute Type \"" + attributeTypeStr + "\" was not a valid type.");
+            throw new ParseException("Attribute Type \"" + attributeTypeStr + "\" was not a valid type.");
         }
 
         //extract NOTNULL
         boolean notNull = !matcher.group(5).isEmpty();
 
         if (notNull && !hasDefault) {
-            throw new ParseException("Error: A NOTNULL attribute must have a non-NULL DEFAULT value.");
+            throw new ParseException("A NOTNULL attribute must have a non-NULL DEFAULT value.");
         }
 
         Attribute attribute = new Attribute(attributeName, notNull, false, attributeType);
@@ -589,7 +589,7 @@ public class ParserImplementation implements Parser
         attributeName = remainingText;
 
         if (!isAlphanumeric(attributeName)) {
-            throw new ParseException("Error: Attribute name \"" + attributeName + "\" composed of non-alphanumeric characters");
+            throw new ParseException("Attribute name \"" + attributeName + "\" composed of non-alphanumeric characters");
         }
 
         return new AlterTableDropCommand(tableName, attributeName);
