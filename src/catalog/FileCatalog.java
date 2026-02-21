@@ -136,6 +136,10 @@ public class FileCatalog implements Catalog {
         return t;
     }
 
+    public Map<String, Table> getTables(){
+        return tables;
+    }
+
     @Override
     public boolean exists(String tableName) {
         if (tableName == null) return false;

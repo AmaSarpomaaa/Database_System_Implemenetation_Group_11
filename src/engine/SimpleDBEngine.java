@@ -10,7 +10,7 @@ import util.DBException;
 import ddl.DDLParser;
 import model.*;
 import util.ParseException;
-
+import java.util.Map;
 
 public class SimpleDBEngine implements DBEngine {
 
@@ -32,6 +32,15 @@ public class SimpleDBEngine implements DBEngine {
         if (catalog instanceof FileCatalog fc) {
             fc.bind(storage, buffer);
         }
+        Map<String, Table> fullListOfTables = catalog.getTables();
+        for(String name: fullListOfTables.keySet()){
+            Table associated = catalog.getTable(name);
+            if(catalog instanceof FileCatalog fc){
+                fc.bind(storage, buffer);
+            }
+
+        }
+
 
         // 3) Buffer Manager (RAM cache of pages)
         buffer = new BufferManager();

@@ -3,6 +3,8 @@ package catalog;
 import model.Table;
 import util.DBException;
 
+import java.util.Map;
+
 public interface Catalog {
 
     void load() throws DBException;
@@ -16,4 +18,6 @@ public interface Catalog {
     Table getTable(String tableName) throws DBException;
 
     boolean exists(String tableName);
+
+    Map<String, Table> getTables();
 }
