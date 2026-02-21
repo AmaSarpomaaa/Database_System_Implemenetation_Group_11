@@ -32,17 +32,19 @@ public class SimpleDBEngine implements DBEngine {
         if (catalog instanceof FileCatalog fc) {
             fc.bind(storage, buffer);
         }
-//        Map<String, Table> fullListOfTables = catalog.getTables();
-//        for(String name: fullListOfTables.keySet()){
-//            Table associated = catalog.getTable(name);
-//        }
 
 
         // 3) Buffer Manager (RAM cache of pages)
         buffer = new BufferManager();
         buffer.initialize(bufferSize, storage.getPageSize(), storage);
 
-        // Phase 1: indexingEnabled is accepted but can be ignored unless your phase requires it
+        Map<String, Table> tables = catalog.getTables();
+        for (Map.Entry<String, Table> entry : tables.entrySet()) {
+            if (entry.getValue() instanceof TableSchema ts) {
+                ts.bind(storage, buffer);
+            }
+        }
+
     }
 
     @Override

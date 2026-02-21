@@ -45,8 +45,9 @@ public class FileCatalog implements Catalog {
                     boolean notNull = in.readBoolean();
                     boolean primaryKey = in.readBoolean();
                     Datatype type = Datatype.valueOf(in.readUTF());
+                    int dataLength = in.readInt();
 
-                    attrs.add(new Attribute(attrName, notNull, primaryKey, type));
+                    attrs.add(new Attribute(attrName, notNull, primaryKey, type, dataLength));
                 }
 
                 Schema schema = new Schema(attrs);
@@ -86,6 +87,7 @@ public class FileCatalog implements Catalog {
                     out.writeBoolean(a.isNotNull());
                     out.writeBoolean(a.isPrimaryKey());
                     out.writeUTF(a.getType().name());
+                    out.writeInt(a.getDataLength());
                 }
 
                 // ✅ NEW: save pageIds so data persists
