@@ -76,7 +76,6 @@ public class BufferManager{
      * @throws DBException aa
      */
     public void markDirty(int pageId) throws DBException{
-        // Look for Page associated within bufferPool. Add to dirtyPages
         if(bufferPool.containsKey(pageId)){
             dirtyPages.add(pageId);
         }
@@ -136,7 +135,7 @@ public class BufferManager{
 
         bufferz.putInt(0, numRecords);
         int currentOffset = pageSize;
-        // Iterate through number of Records in Page, converting to bytes, and placing them withiin the bytebuffer
+        // Iterate through number of Records in Page, converting to bytes, and placing them within the bytebuffer
         for (int i = 0; i < numRecords; i++){
             Record rec = records.get(i);
             byte[] recBytes = serializeRecord(rec);
@@ -211,8 +210,6 @@ public class BufferManager{
         ByteBuffer bufferz = ByteBuffer.wrap(recData);
         bufferz.putInt(attributes.size());
         // Iterate through all attributes, placing each into the empty byteBuffer
-        // Type dependent with size
-        // An integer [1, 2, 3] is placed within the byteBuffer which indicates the type of the attribute
         for (int i = 0; i < attributes.size(); i++){
             Value obje = attributes.get(i);
             Object obj = obje.getRaw();
@@ -252,8 +249,7 @@ public class BufferManager{
 
         // Iterate through number of attributes
         for (int i = 0; i < numAttributes; i++){
-            // The byte buffer contains a number indicating the type of the attribute. A type tag. Using this attribute, we can
-            // get the type and correspondingly convert it
+            // The byte buffer contains a number indicating the type of the attribute.
             byte type = bufferz.get();
 
             if (type == 1){

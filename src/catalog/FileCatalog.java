@@ -52,14 +52,12 @@ public class FileCatalog implements Catalog {
 
                 Schema schema = new Schema(attrs);
 
-                // ✅ NEW: load pageIds
                 int pageCount = in.readInt();
                 List<Integer> pageIds = new ArrayList<>();
                 for (int i = 0; i < pageCount; i++) {
                     pageIds.add(in.readInt());
                 }
 
-                // Create table WITHOUT storage/buffer; bind later in engine.startup()
                 Table table = new TableSchema(tableName, schema, pageIds);
 
                 tables.put(tableName.toLowerCase(), table);
@@ -90,7 +88,6 @@ public class FileCatalog implements Catalog {
                     out.writeInt(a.getDataLength());
                 }
 
-                // ✅ NEW: save pageIds so data persists
                 if (table instanceof TableSchema ts) {
                     List<Integer> pids = ts.getPageIds();
                     out.writeInt(pids.size());
@@ -105,7 +102,6 @@ public class FileCatalog implements Catalog {
         }
     }
 
-    // ✅ Bind storage/buffer into loaded tables after startup()
     public void bind(StorageManager storage, BufferManager buffer) {
         for (Table t : tables.values()) {
             if (t instanceof TableSchema ts) {
