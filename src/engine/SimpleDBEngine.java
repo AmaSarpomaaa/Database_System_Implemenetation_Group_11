@@ -11,6 +11,7 @@ import ddl.DDLParser;
 import model.*;
 import util.ParseException;
 import java.util.Map;
+import java.util.List;
 
 public class SimpleDBEngine implements DBEngine {
 
@@ -108,25 +109,11 @@ public class SimpleDBEngine implements DBEngine {
         Table t = catalog.getTable(tableName);
         Schema s = t.schema();
 
-        StringBuilder out = new StringBuilder();
-
-        // Header
-        out.append("\n|");
-        for (Attribute a : s.getAttributes()) {
-            out.append(" ").append(a.getName()).append(" |");
-        }
-        out.append("\n");
-
-        // Divider (simple)
-        int dashCount = Math.max(0, out.length() - 2);
-        out.append("-".repeat(dashCount)).append("\n");
-
-
+        // Collect rows first so we can calculate column widths
         java.util.List<model.Record> rows = new java.util.ArrayList<>();
         for (model.Record r : t.scan()) {
             rows.add(r);
         }
-
 
         Attribute pk = s.getPrimaryKey();
         int pkIndex = s.getAttributeIndex(pk.getName());
@@ -134,31 +121,59 @@ public class SimpleDBEngine implements DBEngine {
         rows.sort((r1, r2) -> {
             Object a = r1.getAttributes().get(pkIndex).getRaw();
             Object b = r2.getAttributes().get(pkIndex).getRaw();
-
             if (a == null && b == null) return 0;
             if (a == null) return -1;
             if (b == null) return 1;
-
-            if (a instanceof Integer && b instanceof Integer)
-                return ((Integer) a).compareTo((Integer) b);
-
-            if (a instanceof Double && b instanceof Double)
-                return ((Double) a).compareTo((Double) b);
-
-            if (a instanceof String && b instanceof String)
-                return ((String) a).compareTo((String) b);
-
+            if (a instanceof Integer && b instanceof Integer) return ((Integer) a).compareTo((Integer) b);
+            if (a instanceof Double && b instanceof Double) return ((Double) a).compareTo((Double) b);
+            if (a instanceof String && b instanceof String) return ((String) a).compareTo((String) b);
             return a.toString().compareTo(b.toString());
         });
 
+        List<Attribute> attrs = s.getAttributes();
+        int colCount = attrs.size();
+
+        // Calculate column widths
+        int[] widths = new int[colCount];
+        for (int i = 0; i < colCount; i++) {
+            widths[i] = attrs.get(i).getName().length();
+        }
+        for (model.Record r : rows) {
+            for (int i = 0; i < colCount; i++) {
+                Value v = r.getAttributes().get(i);
+                Object raw = (v == null) ? null : v.getRaw();
+                String cell = raw == null ? "NULL" : raw.toString();
+                widths[i] = Math.max(widths[i], cell.length());
+            }
+        }
+
+        StringBuilder out = new StringBuilder();
+
+        // Build divider
+        StringBuilder divider = new StringBuilder("+");
+        for (int w : widths) divider.append("-".repeat(w + 2)).append("+");
+        divider.append("\n");
+
+        // Header
+        out.append(divider);
+        out.append("|");
+        for (int i = 0; i < colCount; i++) {
+            out.append(String.format(" %-" + widths[i] + "s |", attrs.get(i).getName()));
+        }
+        out.append("\n").append(divider);
+
+        // Rows
         for (model.Record r : rows) {
             out.append("|");
-            for (Value v : r.getAttributes()) {
+            for (int i = 0; i < colCount; i++) {
+                Value v = r.getAttributes().get(i);
                 Object raw = (v == null) ? null : v.getRaw();
-                out.append(" ").append(raw == null ? "NULL" : raw).append(" |");
+                String cell = raw == null ? "NULL" : raw.toString();
+                out.append(String.format(" %-" + widths[i] + "s |", cell));
             }
             out.append("\n");
         }
+        out.append(divider);
 
         return Result.ok(out.toString());
     }
