@@ -569,7 +569,7 @@ public class ParserImplementation implements Parser
         boolean notNull = !matcher.group(5).isEmpty();
 
         if (notNull && !hasDefault) {
-            throw new ParseException("A NOTNULL attribute must have a non-NULL DEFAULT value.");
+            throw new ParseException("Not null requires a default value when altering a table");
         }
 
         Attribute attribute = new Attribute(attributeName, notNull, false, attributeType, attributeTypeLength);
