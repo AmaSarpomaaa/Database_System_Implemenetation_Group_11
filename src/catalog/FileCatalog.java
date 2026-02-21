@@ -136,6 +136,7 @@ public class FileCatalog implements Catalog {
         return t;
     }
 
+    @Override
     public Map<String, Table> getTables(){
         return tables;
     }
