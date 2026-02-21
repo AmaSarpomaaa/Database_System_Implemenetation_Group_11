@@ -102,13 +102,19 @@ public class Schema {
                 if (!(value instanceof String)) {
                     throw new DBException("Type mismatch for '" + attr.name + "': expected CHAR");
                 }
-                // TODO: Check exact length when CHAR(N) length is stored in Attribute
+                //check that the value is the exact length of the char attribute
+                if (((String) value).length() != attr.getDataLength()) {
+                    throw new DBException("Attribute " + attr.name + " must be " + attr.getDataLength() + " characters.");
+                }
                 break;
             case VARCHAR:
                 if (!(value instanceof String)) {
                     throw new DBException("Type mismatch for '" + attr.name + "': expected VARCHAR");
                 }
-                // TODO: Check max length when VARCHAR(N) length is stored in Attribute
+                //check that the value is at most the length of the varchar attribute
+                if (((String) value).length() > attr.getDataLength()) {
+                    throw new DBException("Attribute " + attr.name + " must be between 0 and " + attr.getDataLength() + " characters.");
+                }
                 break;
         }
     }

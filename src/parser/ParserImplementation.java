@@ -220,7 +220,7 @@ public class ParserImplementation implements Parser
                 throw new ParseException("Attribute \"" + attributeString + "\" included more than 4 pieces of information");
             }
 
-            Attribute attribute = new Attribute(attributeName, notNull, isPrimaryKey, attributeType);
+            Attribute attribute = new Attribute(attributeName, notNull, isPrimaryKey, attributeType, attributeTypeLength);
             attributes.add(attribute);
 
         }
@@ -572,7 +572,7 @@ public class ParserImplementation implements Parser
             throw new ParseException("A NOTNULL attribute must have a non-NULL DEFAULT value.");
         }
 
-        Attribute attribute = new Attribute(attributeName, notNull, false, attributeType);
+        Attribute attribute = new Attribute(attributeName, notNull, false, attributeType, attributeTypeLength);
 
         if (!hasDefault) {
             return new AlterTableAddCommand(tableName, attribute);

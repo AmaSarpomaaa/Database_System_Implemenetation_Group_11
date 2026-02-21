@@ -12,14 +12,14 @@ public class TableSchema implements Table {
     private final String name;
     private final Schema schema;
 
-    // ✅ Persist this list via FileCatalog
+    // Persist this list via FileCatalog
     private final List<Integer> pageIds = new ArrayList<>();
 
-    // ✅ Bound at runtime so we can read/write pages
+    // Bound at runtime so we can read/write pages
     private StorageManager storage;
     private BufferManager buffer;
 
-    // ✅ Used when CREATING a table at runtime
+    // Used when CREATING a table at runtime
     public TableSchema(String name, Schema schema, StorageManager storage, BufferManager buffer) {
         this.name = name;
         this.schema = schema;
@@ -27,14 +27,14 @@ public class TableSchema implements Table {
         this.buffer = buffer;
     }
 
-    // ✅ Used when LOADING from catalog file (bind storage/buffer later)
+    // Used when LOADING from catalog file (bind storage/buffer later)
     public TableSchema(String name, Schema schema, List<Integer> pageIds) {
         this.name = name;
         this.schema = schema;
         if (pageIds != null) this.pageIds.addAll(pageIds);
     }
 
-    // ✅ Called after catalog.load() in startup()
+    // Called after catalog.load() in startup()
     public void bind(StorageManager storage, BufferManager buffer) {
         this.storage = storage;
         this.buffer = buffer;
@@ -81,7 +81,7 @@ public class TableSchema implements Table {
             }
         }
 
-        // ✅ Phase 1 simplification: 1 record per page
+        // Phase 1 simplification: 1 record per page
         int pid = storage.allocatePage();
         pageIds.add(pid);
 
