@@ -32,14 +32,10 @@ public class SimpleDBEngine implements DBEngine {
         if (catalog instanceof FileCatalog fc) {
             fc.bind(storage, buffer);
         }
-        Map<String, Table> fullListOfTables = catalog.getTables();
-        for(String name: fullListOfTables.keySet()){
-            Table associated = catalog.getTable(name);
-            if(catalog instanceof FileCatalog fc){
-                fc.bind(storage, buffer);
-            }
-
-        }
+//        Map<String, Table> fullListOfTables = catalog.getTables();
+//        for(String name: fullListOfTables.keySet()){
+//            Table associated = catalog.getTable(name);
+//        }
 
 
         // 3) Buffer Manager (RAM cache of pages)
