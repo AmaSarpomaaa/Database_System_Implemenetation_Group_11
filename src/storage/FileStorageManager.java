@@ -12,9 +12,11 @@ public class FileStorageManager implements StorageManager {
 
     private static final byte[] MAGIC = "JOTTQL1".getBytes(StandardCharsets.US_ASCII);
     private static final int VERSION = 1;
+    private static final int HEADER_FIXED_SIZE = MAGIC.length + 4 + 4; // 15 bytes: magic + version + pageSize
 
     private RandomAccessFile raf;
     private int pageSize;
+    private final java.util.Deque<Integer> freeList = new java.util.ArrayDeque<>();
 
     @Override
     public void open(String path, int providedPageSize) throws DBException {
@@ -38,6 +40,7 @@ public class FileStorageManager implements StorageManager {
     @Override
     public void close() throws DBException {
         try {
+            writeHeaderPage0(); // persist free list on close
             if (raf != null) raf.close();
         } catch (IOException e) {
             throw new DBException("Failed to close database file", e);
@@ -86,6 +89,13 @@ public class FileStorageManager implements StorageManager {
 
     @Override
     public int allocatePage() throws DBException {
+        // Reuse a freed page if available
+        if (!freeList.isEmpty()) {
+            int reused = freeList.pop();
+            writeHeaderPage0(); // update persisted free list
+            return reused;
+        }
+
         try {
             long length = raf.length();
 
@@ -109,8 +119,9 @@ public class FileStorageManager implements StorageManager {
 
     @Override
     public void freePage(int pageId) throws DBException {
-        // Phase 1: safe stub. We can add a free-list later.
-        if (pageId <= 0) return; // never free header page
+        if (pageId <= 0) return;
+        freeList.push(pageId);
+        writeHeaderPage0();
     }
 
     @Override
@@ -128,6 +139,15 @@ public class FileStorageManager implements StorageManager {
             buf.putInt(VERSION);   // 4 bytes
             buf.putInt(pageSize);  // 4 bytes
 
+            int maxEntries = (pageSize - HEADER_FIXED_SIZE - 4) / 4; // -4 for freeCount field
+            int toWrite = Math.min(freeList.size(), maxEntries);
+            buf.putInt(toWrite);
+            int written = 0;
+            for (int id : freeList) {
+                if (written++ >= toWrite) break;
+                buf.putInt(id);
+            }
+
             raf.seek(0);
             raf.write(buf.array());
 
@@ -142,19 +162,18 @@ public class FileStorageManager implements StorageManager {
     private void readHeaderPage0() throws DBException {
         try {
             raf.seek(0);
+            byte[] data = new byte[pageSize];
+            raf.readFully(data);
+            ByteBuffer buf = ByteBuffer.wrap(data);
 
-            // minimum bytes: MAGIC(7) + VERSION(4) + pageSize(4) = 15
-            byte[] min = new byte[15];
-            raf.readFully(min);
-
+            // Validate magic
+            byte[] magic = new byte[MAGIC.length];
+            buf.get(magic);
             for (int i = 0; i < MAGIC.length; i++) {
-                if (min[i] != MAGIC[i]) {
+                if (magic[i] != MAGIC[i]) {
                     throw new DBException("Not a valid JottQL database file (bad magic).");
                 }
             }
-
-            ByteBuffer buf = ByteBuffer.wrap(min);
-            buf.position(MAGIC.length);
 
             int version = buf.getInt();
             if (version != VERSION) {
@@ -163,6 +182,13 @@ public class FileStorageManager implements StorageManager {
 
             this.pageSize = buf.getInt();
             if (pageSize <= 0) throw new DBException("Corrupt header: invalid pageSize " + pageSize);
+
+            // Load free list
+            freeList.clear();
+            int freeCount = buf.getInt();
+            for (int i = 0; i < freeCount; i++) {
+                freeList.push(buf.getInt());
+            }
 
         } catch (IOException e) {
             throw new DBException("Failed to read header page 0", e);
