@@ -301,12 +301,12 @@ public class ParserImplementation implements Parser
 
             if (!row.isEmpty()) {
 
-                //a value possibly followed by a space, the capturing group is a value
-                Matcher valueMatcher = Pattern.compile("((?:[^ \"]*(?:\"[^\"]*\")*)*) ?").matcher(row);
+                //tokenize by quoted strings or non-space sequences
+                Matcher tokenMatcher = Pattern.compile("\"[^\"]*\"|[^ ]+").matcher(row);
 
-                while (valueMatcher.find()) {
+                while (tokenMatcher.find()) {
 
-                    String value = valueMatcher.group(1);
+                    String value = tokenMatcher.group();
 
                     if (!value.isEmpty()) {
 
@@ -341,7 +341,7 @@ public class ParserImplementation implements Parser
                         }
 
                         //string
-                        Matcher charMatcher = Pattern.compile("\"((:?[^\"])*)\"").matcher(value);
+                        Matcher charMatcher = Pattern.compile("\"([^\"]*)\"").matcher(value);
 
                         if (charMatcher.matches()) {
                             command.addString(charMatcher.group(1));
