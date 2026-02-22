@@ -162,26 +162,32 @@ public class FileStorageManager implements StorageManager {
     private void readHeaderPage0() throws DBException {
         try {
             raf.seek(0);
-            byte[] data = new byte[pageSize];
-            raf.readFully(data);
-            ByteBuffer buf = ByteBuffer.wrap(data);
+            byte[] fixedData = new byte[HEADER_FIXED_SIZE];
+            raf.readFully(fixedData);
+            ByteBuffer fixedBuf = ByteBuffer.wrap(fixedData);
 
             // Validate magic
             byte[] magic = new byte[MAGIC.length];
-            buf.get(magic);
+            fixedBuf.get(magic);
             for (int i = 0; i < MAGIC.length; i++) {
                 if (magic[i] != MAGIC[i]) {
                     throw new DBException("Not a valid JottQL database file (bad magic).");
                 }
             }
 
-            int version = buf.getInt();
+            int version = fixedBuf.getInt();
             if (version != VERSION) {
                 throw new DBException("Unsupported database version: " + version);
             }
 
-            this.pageSize = buf.getInt();
+            this.pageSize = fixedBuf.getInt();
             if (pageSize <= 0) throw new DBException("Corrupt header: invalid pageSize " + pageSize);
+
+            raf.seek(0);
+            byte[] data = new byte[pageSize];
+            raf.readFully(data);
+            ByteBuffer buf = ByteBuffer.wrap(data);
+            buf.position(HEADER_FIXED_SIZE);
 
             // Load free list
             freeList.clear();
