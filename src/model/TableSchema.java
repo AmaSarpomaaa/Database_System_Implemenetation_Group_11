@@ -74,7 +74,6 @@ public class TableSchema implements Table {
                 for (Record existing : p.getRecords()) {
                     Object existingPk = existing.getAttributes().get(pkIndex).getRaw();
                     if (pkValue != null && pkValue.equals(existingPk)) {
-                        // Match your expected style (you can adjust message later)
                         throw new DBException("duplicate primary key value: ( " + pkValue + " )");
                     }
                 }
@@ -83,12 +82,13 @@ public class TableSchema implements Table {
 
         // Phase 1 simplification: 1 record per page
         int pid = storage.allocatePage();
-        pageIds.add(pid);
+        pageIds.add(pid);  // ← moved to after PK check
 
-        Page p = buffer.getPage(pid);     // loads empty page bytes -> Page with 0 records
+        Page p = buffer.getPage(pid);
         p.addRecord(record);
-        buffer.markDirty(pid);            // ensures flushAll writes it to disk
+        buffer.markDirty(pid);
     }
+
 
     @Override
     public List<Record> scan() throws DBException {

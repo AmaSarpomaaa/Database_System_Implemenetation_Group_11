@@ -2,6 +2,7 @@ package ddl;
 
 import buffer.BufferManager;
 import catalog.Catalog;
+import model.TableSchema;
 import model.*;
 import storage.StorageManager;
 import util.DBException;

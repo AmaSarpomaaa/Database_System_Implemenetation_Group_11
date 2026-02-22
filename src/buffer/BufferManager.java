@@ -189,11 +189,9 @@ public class BufferManager{
 
         // Iterate through number of attributes
         for (int i = 0; i < attributes.size(); i++){
-            // Check type of attribute to get needed size for bytebuffer (String, Double, Integer)
-            // num of bytes needed for type of attribute
             Value obje = attributes.get(i);
             Object obj = obje.getRaw();
-            totSize = totSize + 1;
+            totSize = totSize + 1; // type byte
             if (obj instanceof Integer){
                 totSize = totSize + 4;
             }
@@ -204,6 +202,10 @@ public class BufferManager{
                 String s = (String) obj;
                 totSize = totSize + 4 + s.length();
             }
+            else if (obj instanceof Boolean){
+                totSize = totSize + 1;
+            }
+            // null: just the type byte (already counted above)
         }
         // Create a byte[] with the calculated total size of attributes
         byte[] recData = new byte[totSize];
@@ -230,6 +232,14 @@ public class BufferManager{
                     bufferz.put((byte) st.charAt(j));
                 }
             }
+            else if (obj instanceof Boolean){
+                bufferz.put((byte) 4);
+                bufferz.put((byte) (((Boolean) obj) ? 1 : 0));
+            }
+            else {
+                // null
+                bufferz.put((byte) 0);
+            }
         }
         return recData;
     }
@@ -252,7 +262,10 @@ public class BufferManager{
             // The byte buffer contains a number indicating the type of the attribute.
             byte type = bufferz.get();
 
-            if (type == 1){
+            if (type == 0){
+                rec.addAttribute(new Value(null));
+            }
+            else if (type == 1){
                 int val = bufferz.getInt();
                 rec.addAttribute(new Value(val));
             }
@@ -267,6 +280,10 @@ public class BufferManager{
                     strBytes[j] = bufferz.get();
                 }
                 String val = new String(strBytes);
+                rec.addAttribute(new Value(val));
+            }
+            else if (type == 4){
+                boolean val = bufferz.get() == 1;
                 rec.addAttribute(new Value(val));
             }
         }

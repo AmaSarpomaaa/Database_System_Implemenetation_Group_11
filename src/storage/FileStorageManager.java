@@ -89,29 +89,31 @@ public class FileStorageManager implements StorageManager {
 
     @Override
     public int allocatePage() throws DBException {
-        // Reuse a freed page if available
         if (!freeList.isEmpty()) {
             int reused = freeList.pop();
-            writeHeaderPage0(); // update persisted free list
+            writeHeaderPage0();
+
+            // Zero out the reused page to avoid stale data
+            try {
+                byte[] empty = new byte[pageSize];
+                raf.seek((long) reused * pageSize);
+                raf.write(empty);
+            } catch (IOException e) {
+                throw new DBException("Failed to clear reused page", e);
+            }
+
             return reused;
         }
 
         try {
             long length = raf.length();
-
-            // Ensure header exists (page 0)
             if (length < pageSize) {
                 raf.setLength(pageSize);
                 length = raf.length();
             }
-
             int newPageId = (int) (length / pageSize);
-
-            // Grow file by one full page
             raf.setLength(length + pageSize);
-
             return newPageId;
-
         } catch (IOException e) {
             throw new DBException("Failed to allocate page", e);
         }

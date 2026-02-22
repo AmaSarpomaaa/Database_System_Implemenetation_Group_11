@@ -265,105 +265,106 @@ public class ParserImplementation implements Parser
     }
 
     private ParsedCommand parseInsert(String input) throws ParseException
-    {
+{
 
-        //Check for "INSERT <tableName> VALUES(<something>);"
-        Pattern pattern = Pattern.compile("INSERT (\\w+) VALUES *\\((.*)\\);");
-        Matcher matcher = pattern.matcher(input);
+    //Check for "INSERT <tableName> VALUES(<something>);"
+    Pattern pattern = Pattern.compile("INSERT (\\w+) VALUES *\\((.*)\\);");
+    Matcher matcher = pattern.matcher(input);
 
-        //extract tableName
-        String tableName;
-        String valuesString;
+    //extract tableName
+    String tableName;
+    String valuesString;
 
-        if (matcher.matches()) {
+    if (matcher.matches()) {
 
-            tableName = matcher.group(1).toLowerCase();
-            valuesString = matcher.group(2);
+        tableName = matcher.group(1).toLowerCase();
+        valuesString = matcher.group(2);
 
-            if (!isAlphanumeric(tableName)) {
-                throw new ParseException("Table name \"" + tableName + "\" composed of non-alphanumeric characters");
-            }
-
-        }
-        else {
-            throw new ParseException("Invalid command syntax.");
+        if (!isAlphanumeric(tableName)) {
+            throw new ParseException("Table name \"" + tableName + "\" composed of non-alphanumeric characters");
         }
 
-        //extract values
-        InsertCommand command = new InsertCommand(tableName);
+    }
+    else {
+        throw new ParseException("Invalid command syntax.");
+    }
 
-        //a row possibly followed by a comma, the capturing group is a row
-        Matcher rowMatcher = Pattern.compile("((?:[^,\"]*(?:\"[^\"]*\")*)*),?").matcher(valuesString);
+    //extract values
+    InsertCommand command = new InsertCommand(tableName);
 
-        while (rowMatcher.find()) {
+    //a row possibly followed by a comma, the capturing group is a row
+    Matcher rowMatcher = Pattern.compile("((?:[^,\"]*(?:\"[^\"]*\")*)*),?").matcher(valuesString);
 
-            String row = rowMatcher.group(1).trim();
+    while (rowMatcher.find()) {
 
-            if (!row.isEmpty()) {
+        String row = rowMatcher.group(1).trim();
 
-                //tokenize by quoted strings or non-space sequences
-                Matcher tokenMatcher = Pattern.compile("\"[^\"]*\"|[^ ]+").matcher(row);
+        if (!row.isEmpty()) {
 
-                while (tokenMatcher.find()) {
+            //tokenize by quoted strings or non-space sequences
+            Matcher tokenMatcher = Pattern.compile("\"[^\"]*\"|[^ ]+").matcher(row);
 
-                    String value = tokenMatcher.group();
+            while (tokenMatcher.find()) {
 
-                    if (!value.isEmpty()) {
+                String value = tokenMatcher.group();
 
-                        //integer
-                        try {
-                            command.addInteger(Integer.parseInt(value));
-                            continue;
-                        }
-                        catch (NumberFormatException ignored) {}
 
-                        //double
-                        try {
-                            command.addDouble(Double.parseDouble(value));
-                            continue;
-                        }
-                        catch (NumberFormatException ignored) {}
+                if (!value.isEmpty()) {
 
-                        //boolean
-                        if (value.equals("True")) {
-                            command.addBoolean(true);
-                            continue;
-                        }
-                        else if (value.equals("False")) {
-                            command.addBoolean(false);
-                            continue;
-                        }
-
-                        //null
-                        if (value.equals("NULL")) {
-                            command.addNull();
-                            continue;
-                        }
-
-                        //string
-                        Matcher charMatcher = Pattern.compile("\"([^\"]*)\"").matcher(value);
-
-                        if (charMatcher.matches()) {
-                            command.addString(charMatcher.group(1));
-                            continue;
-                        }
-
-                        //invalid data
-                        throw new ParseException("\"" + value + "\" was not of a valid data type.");
-
+                    //integer
+                    try {
+                        command.addInteger(Integer.parseInt(value));
+                        continue;
                     }
+                    catch (NumberFormatException ignored) {}
+
+                    //double
+                    try {
+                        command.addDouble(Double.parseDouble(value));
+                        continue;
+                    }
+                    catch (NumberFormatException ignored) {}
+
+                    //boolean
+                    if (value.equals("True")) {
+                        command.addBoolean(true);
+                        continue;
+                    }
+                    else if (value.equals("False")) {
+                        command.addBoolean(false);
+                        continue;
+                    }
+
+                    //null
+                    if (value.equals("NULL")) {
+                        command.addNull();
+                        continue;
+                    }
+
+                    //string
+                    Matcher charMatcher = Pattern.compile("\"([^\"]*)\"").matcher(value);
+
+                    if (charMatcher.matches()) {
+                        command.addString(charMatcher.group(1));
+                        continue;
+                    }
+
+                    //invalid data
+                    throw new ParseException("\"" + value + "\" was not of a valid data type.");
 
                 }
 
             }
 
-            command.addRow();
-
         }
 
-        return command;
+        command.addRow();
 
     }
+
+    return command;
+
+}
 
     private ParsedCommand parseDrop(String input) throws ParseException
     {
