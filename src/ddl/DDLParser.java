@@ -57,6 +57,11 @@ public class DDLParser implements DDLProcessor {
             throw new DBException("Table '" + tableName + "' does not exist.");
         }
 
+        Table table = catalog.getTable(tableName);
+        for (int pageId : table.getPageIds()) {
+            storage.freePage(pageId);
+        }
+
         catalog.removeTable(tableName);
 
         return Result.ok("Table dropped successfully");
@@ -154,6 +159,9 @@ public class DDLParser implements DDLProcessor {
                 if (i != dropIndex) rNew.addAttribute(vals.get(i));
             }
             newTable.insert(rNew);
+        }
+        for (int pageId : oldT.getPageIds()) {
+            storage.freePage(pageId);
         }
 
         catalog.removeTable(tableName);

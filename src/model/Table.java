@@ -10,4 +10,6 @@ public interface Table {
     void insert(Record record) throws DBException;
 
     List<Record> scan() throws DBException;
+
+    List<Integer> getPageIds() throws DBException;
 }
