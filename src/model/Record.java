@@ -3,18 +3,26 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Record {
-    private List<Object> attributes;
+    private final List<Value> attributes;
 
     public Record(){
-        attributes = new ArrayList<Object>();
+        this.attributes = new ArrayList<>();
     }
 
-    public List<Object> getAttributes() {
+    public Record(List<Value> attributes){
+        this.attributes = new ArrayList<>();
+    }
+
+    public List<Value> getAttributes() {
         return attributes;
     }
 
-    public void addAttribute(Object o){
+    public void addAttribute(Value o){
         attributes.add(o);
+    }
+
+    public Value getValue(int index){
+        return attributes.get(index);
     }
 
 }

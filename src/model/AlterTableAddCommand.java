@@ -21,12 +21,12 @@ public class AlterTableAddCommand extends AlterTableCommand {
 
     @Override
     public boolean isAdd() {
-        return false;
+        return true;
     }
 
     @Override
     public boolean isDrop() {
-        return true;
+        return false;
     }
 
     public Attribute getAttribute() {

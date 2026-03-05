@@ -12,9 +12,11 @@ public class FileStorageManager implements StorageManager {
 
     private static final byte[] MAGIC = "JOTTQL1".getBytes(StandardCharsets.US_ASCII);
     private static final int VERSION = 1;
+    private static final int HEADER_FIXED_SIZE = MAGIC.length + 4 + 4; // 15 bytes: magic + version + pageSize
 
     private RandomAccessFile raf;
     private int pageSize;
+    private final java.util.Deque<Integer> freeList = new java.util.ArrayDeque<>();
 
     @Override
     public void open(String path, int providedPageSize) throws DBException {
@@ -38,6 +40,7 @@ public class FileStorageManager implements StorageManager {
     @Override
     public void close() throws DBException {
         try {
+            writeHeaderPage0(); // persist free list on close
             if (raf != null) raf.close();
         } catch (IOException e) {
             throw new DBException("Failed to close database file", e);
@@ -86,22 +89,31 @@ public class FileStorageManager implements StorageManager {
 
     @Override
     public int allocatePage() throws DBException {
+        if (!freeList.isEmpty()) {
+            int reused = freeList.pop();
+            writeHeaderPage0();
+
+            // Zero out the reused page to avoid stale data
+            try {
+                byte[] empty = new byte[pageSize];
+                raf.seek((long) reused * pageSize);
+                raf.write(empty);
+            } catch (IOException e) {
+                throw new DBException("Failed to clear reused page", e);
+            }
+
+            return reused;
+        }
+
         try {
             long length = raf.length();
-
-            // Ensure header exists (page 0)
             if (length < pageSize) {
                 raf.setLength(pageSize);
                 length = raf.length();
             }
-
             int newPageId = (int) (length / pageSize);
-
-            // Grow file by one full page
             raf.setLength(length + pageSize);
-
             return newPageId;
-
         } catch (IOException e) {
             throw new DBException("Failed to allocate page", e);
         }
@@ -109,8 +121,9 @@ public class FileStorageManager implements StorageManager {
 
     @Override
     public void freePage(int pageId) throws DBException {
-        // Phase 1: safe stub. We can add a free-list later.
-        if (pageId <= 0) return; // never free header page
+        if (pageId <= 0) return;
+        freeList.push(pageId);
+        writeHeaderPage0();
     }
 
     @Override
@@ -128,6 +141,15 @@ public class FileStorageManager implements StorageManager {
             buf.putInt(VERSION);   // 4 bytes
             buf.putInt(pageSize);  // 4 bytes
 
+            int maxEntries = (pageSize - HEADER_FIXED_SIZE - 4) / 4; // -4 for freeCount field
+            int toWrite = Math.min(freeList.size(), maxEntries);
+            buf.putInt(toWrite);
+            int written = 0;
+            for (int id : freeList) {
+                if (written++ >= toWrite) break;
+                buf.putInt(id);
+            }
+
             raf.seek(0);
             raf.write(buf.array());
 
@@ -142,27 +164,39 @@ public class FileStorageManager implements StorageManager {
     private void readHeaderPage0() throws DBException {
         try {
             raf.seek(0);
+            byte[] fixedData = new byte[HEADER_FIXED_SIZE];
+            raf.readFully(fixedData);
+            ByteBuffer fixedBuf = ByteBuffer.wrap(fixedData);
 
-            // minimum bytes: MAGIC(7) + VERSION(4) + pageSize(4) = 15
-            byte[] min = new byte[15];
-            raf.readFully(min);
-
+            // Validate magic
+            byte[] magic = new byte[MAGIC.length];
+            fixedBuf.get(magic);
             for (int i = 0; i < MAGIC.length; i++) {
-                if (min[i] != MAGIC[i]) {
+                if (magic[i] != MAGIC[i]) {
                     throw new DBException("Not a valid JottQL database file (bad magic).");
                 }
             }
 
-            ByteBuffer buf = ByteBuffer.wrap(min);
-            buf.position(MAGIC.length);
-
-            int version = buf.getInt();
+            int version = fixedBuf.getInt();
             if (version != VERSION) {
                 throw new DBException("Unsupported database version: " + version);
             }
 
-            this.pageSize = buf.getInt();
+            this.pageSize = fixedBuf.getInt();
             if (pageSize <= 0) throw new DBException("Corrupt header: invalid pageSize " + pageSize);
+
+            raf.seek(0);
+            byte[] data = new byte[pageSize];
+            raf.readFully(data);
+            ByteBuffer buf = ByteBuffer.wrap(data);
+            buf.position(HEADER_FIXED_SIZE);
+
+            // Load free list
+            freeList.clear();
+            int freeCount = buf.getInt();
+            for (int i = 0; i < freeCount; i++) {
+                freeList.push(buf.getInt());
+            }
 
         } catch (IOException e) {
             throw new DBException("Failed to read header page 0", e);
