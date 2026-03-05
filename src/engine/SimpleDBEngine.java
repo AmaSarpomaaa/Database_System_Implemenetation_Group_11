@@ -110,7 +110,7 @@ public class SimpleDBEngine implements DBEngine {
         Schema s = t.schema();
 
         // Collect rows first so we can calculate column widths
-        java.util.List<model.Record> rows = new java.util.ArrayList<>();
+        List<model.Record> rows = new java.util.ArrayList<>();
         for (model.Record r : t.scan()) {
             rows.add(r);
         }
@@ -189,7 +189,7 @@ public class SimpleDBEngine implements DBEngine {
         int inserted = 0;
 
         // InsertCommand stores rows as List<Object[]>, and rows separated by addRow()
-        for (java.util.List<Object[]> row : cmd.getValues()) {
+        for (List<Object[]> row : cmd.getValues()) {
             if (row == null || row.isEmpty()) continue;
 
             model.Record r = new model.Record();
