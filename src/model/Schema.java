@@ -1,8 +1,6 @@
 package model;
 
 import util.DBException;
-
-import java.util.ArrayList;
 import java.util.List;
 
 public class Schema {
@@ -37,10 +35,6 @@ public class Schema {
         return -1;
     }
 
-    public List<Attribute> getAttributes() {
-        return (attributeList);
-    }
-
     /**
      * Check if an attribute with the given name exists
      */
@@ -53,7 +47,7 @@ public class Schema {
      * Checks: correct number of values, type compatibility, NOT NULL constraints.
      */
     public void validate(Record record) throws DBException {
-        List<Value> values = record.getAttributes();
+        List<Object> values = record.getAttributes();
 
         // Check arity
         if (values.size() != attributeList.size()) {
@@ -63,8 +57,7 @@ public class Schema {
         // Check each attribute
         for (int i = 0; i < attributeList.size(); i++) {
             Attribute attr = attributeList.get(i);
-            Value vObj = values.get(i);
-            Object value = (vObj == null) ? null : vObj.getRaw();
+            Object value = values.get(i);
 
             // Check NOT NULL constraint
             if (value == null && attr.not_null) {
@@ -102,19 +95,13 @@ public class Schema {
                 if (!(value instanceof String)) {
                     throw new DBException("Type mismatch for '" + attr.name + "': expected CHAR");
                 }
-                //check that the value is the exact length of the char attribute
-                if (((String) value).length() != attr.getDataLength()) {
-                    throw new DBException("Attribute " + attr.name + " must be " + attr.getDataLength() + " characters.");
-                }
+                // TODO: Check exact length when CHAR(N) length is stored in Attribute
                 break;
             case VARCHAR:
                 if (!(value instanceof String)) {
                     throw new DBException("Type mismatch for '" + attr.name + "': expected VARCHAR");
                 }
-                //check that the value is at most the length of the varchar attribute
-                if (((String) value).length() > attr.getDataLength()) {
-                    throw new DBException("Attribute " + attr.name + " must be between 0 and " + attr.getDataLength() + " characters.");
-                }
+                // TODO: Check max length when VARCHAR(N) length is stored in Attribute
                 break;
         }
     }
