@@ -3,6 +3,7 @@ package engine;
 import buffer.BufferManager;
 import catalog.Catalog;
 import catalog.FileCatalog;
+import model.Record;
 import parser.ParserImplementation;
 import storage.FileStorageManager;
 import storage.StorageManager;
@@ -10,6 +11,7 @@ import util.DBException;
 import ddl.DDLParser;
 import model.*;
 import util.ParseException;
+
 import java.util.Map;
 import java.util.List;
 
@@ -22,17 +24,19 @@ public class SimpleDBEngine implements DBEngine {
     @Override
     public void startup(String dbLocation, int pageSize, int bufferSize, boolean indexingEnabled) throws DBException {
 
+        java.io.File dir = new java.io.File(dbLocation);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+
+
         // 1) Storage Manager (disk)
         storage = new FileStorageManager();
-        storage.open(dbLocation, pageSize);
+        storage.open(dbLocation +"/database.db", pageSize);
 
         // 2) Catalog (table definitions)
-        catalog = new FileCatalog(dbLocation);
+        catalog = new FileCatalog(dbLocation + "/database.catalog");
         catalog.load();
-
-        if (catalog instanceof FileCatalog fc) {
-            fc.bind(storage, buffer);
-        }
 
 
         // 3) Buffer Manager (RAM cache of pages)
@@ -99,6 +103,85 @@ public class SimpleDBEngine implements DBEngine {
         throw new DBException("Unsupported command in Phase 1 engine routing.");
     }
 
+//    private Result handleSelect(SimpleSelectCommand cmd) throws DBException {
+//        String tableName = cmd.getTableName();
+//
+//        if (!catalog.exists(tableName)) {
+//            return Result.error("No such table: " + tableName);
+//        }
+//
+//        Table t = catalog.getTable(tableName);
+//        Schema s = t.schema();
+//
+//        // Collect rows first so we can calculate column widths
+//        List<model.Record> rows = new java.util.ArrayList<>();
+//        for (model.Record r : t.scan()) {
+//            rows.add(r);
+//        }
+//
+//        Attribute pk = s.getPrimaryKey();
+//        int pkIndex = s.getAttributeIndex(pk.getName());
+//
+//        rows.sort((r1, r2) -> {
+//            Object a = r1.getAttributes().get(pkIndex).getRaw();
+//            Object b = r2.getAttributes().get(pkIndex).getRaw();
+//            if (a == null && b == null) return 0;
+//            if (a == null) return -1;
+//            if (b == null) return 1;
+//            if (a instanceof Integer && b instanceof Integer) return ((Integer) a).compareTo((Integer) b);
+//            if (a instanceof Double && b instanceof Double) return ((Double) a).compareTo((Double) b);
+//            if (a instanceof String && b instanceof String) return ((String) a).compareTo((String) b);
+//            return a.toString().compareTo(b.toString());
+//        });
+//
+//        List<Attribute> attrs = s.getAttributes();
+//        int colCount = attrs.size();
+//
+//        // Calculate column widths
+//        int[] widths = new int[colCount];
+//        for (int i = 0; i < colCount; i++) {
+//            widths[i] = attrs.get(i).getName().length();
+//        }
+//        for (model.Record r : rows) {
+//            for (int i = 0; i < colCount; i++) {
+//                Value v = r.getAttributes().get(i);
+//                Object raw = (v == null) ? null : v.getRaw();
+//                String cell = raw == null ? "NULL" : raw.toString();
+//                widths[i] = Math.max(widths[i], cell.length());
+//            }
+//        }
+//
+//        StringBuilder out = new StringBuilder();
+//
+//        // Build divider
+//        StringBuilder divider = new StringBuilder("+");
+//        for (int w : widths) divider.append("-".repeat(w + 2)).append("+");
+//        divider.append("\n");
+//
+//        // Header
+//        out.append(divider);
+//        out.append("|");
+//        for (int i = 0; i < colCount; i++) {
+//            out.append(String.format(" %-" + widths[i] + "s |", attrs.get(i).getName()));
+//        }
+//        out.append("\n").append(divider);
+//
+//        // Rows
+//        for (model.Record r : rows) {
+//            out.append("|");
+//            for (int i = 0; i < colCount; i++) {
+//                Value v = r.getAttributes().get(i);
+//                Object raw = (v == null) ? null : v.getRaw();
+//                String cell = raw == null ? "NULL" : raw.toString();
+//                out.append(String.format(" %-" + widths[i] + "s |", cell));
+//            }
+//            out.append("\n");
+//        }
+//        out.append(divider);
+//
+//        return Result.ok(out.toString());
+//    }
+
     private Result handleSelect(SimpleSelectCommand cmd) throws DBException {
         String tableName = cmd.getTableName();
 
@@ -108,72 +191,37 @@ public class SimpleDBEngine implements DBEngine {
 
         Table t = catalog.getTable(tableName);
         Schema s = t.schema();
-
-        // Collect rows first so we can calculate column widths
-        List<model.Record> rows = new java.util.ArrayList<>();
-        for (model.Record r : t.scan()) {
-            rows.add(r);
-        }
-
-        Attribute pk = s.getPrimaryKey();
-        int pkIndex = s.getAttributeIndex(pk.getName());
-
-        rows.sort((r1, r2) -> {
-            Object a = r1.getAttributes().get(pkIndex).getRaw();
-            Object b = r2.getAttributes().get(pkIndex).getRaw();
-            if (a == null && b == null) return 0;
-            if (a == null) return -1;
-            if (b == null) return 1;
-            if (a instanceof Integer && b instanceof Integer) return ((Integer) a).compareTo((Integer) b);
-            if (a instanceof Double && b instanceof Double) return ((Double) a).compareTo((Double) b);
-            if (a instanceof String && b instanceof String) return ((String) a).compareTo((String) b);
-            return a.toString().compareTo(b.toString());
-        });
-
         List<Attribute> attrs = s.getAttributes();
-        int colCount = attrs.size();
-
-        // Calculate column widths
-        int[] widths = new int[colCount];
-        for (int i = 0; i < colCount; i++) {
-            widths[i] = attrs.get(i).getName().length();
-        }
-        for (model.Record r : rows) {
-            for (int i = 0; i < colCount; i++) {
-                Value v = r.getAttributes().get(i);
-                Object raw = (v == null) ? null : v.getRaw();
-                String cell = raw == null ? "NULL" : raw.toString();
-                widths[i] = Math.max(widths[i], cell.length());
-            }
-        }
 
         StringBuilder out = new StringBuilder();
 
-        // Build divider
-        StringBuilder divider = new StringBuilder("+");
-        for (int w : widths) divider.append("-".repeat(w + 2)).append("+");
-        divider.append("\n");
-
         // Header
-        out.append(divider);
         out.append("|");
-        for (int i = 0; i < colCount; i++) {
-            out.append(String.format(" %-" + widths[i] + "s |", attrs.get(i).getName()));
+        for (Attribute a : attrs) {
+            out.append(" ").append(a.getName()).append(" |");
         }
-        out.append("\n").append(divider);
+        out.append("\n");
 
-        // Rows
-        for (model.Record r : rows) {
-            out.append("|");
-            for (int i = 0; i < colCount; i++) {
-                Value v = r.getAttributes().get(i);
-                Object raw = (v == null) ? null : v.getRaw();
-                String cell = raw == null ? "NULL" : raw.toString();
-                out.append(String.format(" %-" + widths[i] + "s |", cell));
+        // Divider
+        out.append("-".repeat(out.length() - 1)).append("\n");
+
+        // STREAM records (no sorting, no collecting)
+        if (t instanceof TableSchema ts) {
+            for (int pid : ts.getPageIds()) {
+                Page p = buffer.getPage(pid);
+
+                for (Record r : p.getRecords()) {
+                    out.append("|");
+                    for (Value v : r.getAttributes()) {
+                        Object raw = (v == null) ? null : v.getRaw();
+                        out.append(" ").append(raw == null ? "NULL" : raw).append(" |");
+                    }
+                    out.append("\n");
+                }
             }
-            out.append("\n");
+        } else{
+            throw new DBException("Unsupported table type");
         }
-        out.append(divider);
 
         return Result.ok(out.toString());
     }
