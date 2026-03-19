@@ -109,7 +109,7 @@ public class SimpleDBEngine implements DBEngine {
         Table t = catalog.getTable(tableName);
         Schema s = t.schema();
 
-        // Collect rows first so we can calculate column widths
+        // Collect rows first so we can calculate column width
         List<model.Record> rows = new java.util.ArrayList<>();
         for (model.Record r : t.scan()) {
             rows.add(r);
