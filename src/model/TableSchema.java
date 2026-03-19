@@ -69,7 +69,7 @@ public class TableSchema implements Table {
         int pkIndex = schema.getAttributeIndex(pk.getName());
         Object pkValue = record.getAttributes().get(pkIndex).getRaw();
 
-        // check duplicates
+        // check duplicates + find insertion page
         for (int i = 0; i < pageIds.size(); i++) {
             int pid = pageIds.get(i);
             Page p = buffer.getPage(pid);
@@ -82,18 +82,11 @@ public class TableSchema implements Table {
                 }
             }
 
-            // if page is empty, insert here
-            if (records.isEmpty()) {
-                records.add(record);
-                buffer.markDirty(pid);
-                return;
-            }
+            boolean isLastPage = (i == pageIds.size() - 1);
 
-            // compare with last record in this page
-            Object lastPk = records.get(records.size() - 1).getAttributes().get(pkIndex).getRaw();
-
-            if (compareKeys(pkValue, lastPk) < 0) {
-                // record belongs somewhere in this page
+            // record belongs in this page if its key <= last key on page, OR this is the last page
+            Object lastPk = records.isEmpty() ? null : records.get(records.size() - 1).getAttributes().get(pkIndex).getRaw();
+            if (records.isEmpty() || compareKeys(pkValue, lastPk) <= 0 || isLastPage) {
                 if (buffer.canFitRecord(p, record)) {
                     insertIntoSortedPosition(records, record, pkIndex);
                     buffer.markDirty(pid);
@@ -107,28 +100,9 @@ public class TableSchema implements Table {
             }
         }
 
-        // try inserting into last page first
-        if (!pageIds.isEmpty()) {
-            int lastPid = pageIds.get(pageIds.size() - 1);
-            Page lastPage = buffer.getPage(lastPid);
-
-            if (buffer.canFitRecord(lastPage, record)) {
-                insertIntoSortedPosition(lastPage.getRecords(), record, pkIndex);
-                buffer.markDirty(lastPid);
-                return;
-            }else{
-                insertIntoSortedPosition(lastPage.getRecords(), record, pkIndex);
-                splitPage(pageIds.size() -1, lastPage);
-                buffer.markDirty(lastPid);
-                return;
-            }
-
-        }
-
-        // if page full OR no pages yet, allocate new page
+        // no pages yet
         int pid = storage.allocatePage();
         pageIds.add(pid);
-
         Page newPage = buffer.getPage(pid);
         newPage.addRecord(record);
         buffer.markDirty(pid);
