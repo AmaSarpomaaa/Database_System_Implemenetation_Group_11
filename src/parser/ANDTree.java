@@ -17,5 +17,5 @@ public class ANDTree implements IWhereTree{
     public boolean evaluate(Schema scheme, Record record) throws DBException {
 //        The implementation would go here
         return false;
-    }
+    }    //test
 }
