@@ -15,7 +15,6 @@ public class ANDTree implements IWhereTree{
 
     @Override
     public boolean evaluate(Schema scheme, Record record) throws DBException {
-//        The implementation would go here
-        return false;
-    }    //test
+        return leftN.evaluate(scheme, record) && rightN.evaluate(scheme, record);
+    }
 }

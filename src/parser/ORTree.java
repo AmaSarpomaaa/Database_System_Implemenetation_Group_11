@@ -15,6 +15,6 @@ public class ORTree implements IWhereTree{
 
     @Override
     public boolean evaluate(Schema scheme, Record record) throws DBException {
-        return false;
+        return rightN.evaluate(scheme, record) || leftN.evaluate(scheme, record);
     }
 }
