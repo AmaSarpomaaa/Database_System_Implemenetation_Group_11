@@ -3,6 +3,7 @@ package engine;
 import buffer.BufferManager;
 import catalog.Catalog;
 import catalog.FileCatalog;
+import parser.IWhereTree;
 import parser.ParserImplementation;
 import storage.FileStorageManager;
 import storage.StorageManager;
@@ -91,7 +92,7 @@ public class SimpleDBEngine implements DBEngine {
         if (cmd instanceof AlterTableDropCommand) return ddl.alterTableDrop((AlterTableDropCommand) cmd);
 
         // ---------- SELECT ----------
-        if (cmd instanceof SimpleSelectCommand) return handleSelect((SimpleSelectCommand) cmd);
+        if (cmd instanceof SimpleSelectCommand) return handleSelect((SimpleSelectCommand) cmd, null);
 
         // ---------- INSERT ----------
         if (cmd instanceof InsertCommand) return handleInsert((InsertCommand) cmd);
@@ -99,77 +100,42 @@ public class SimpleDBEngine implements DBEngine {
         throw new DBException("Unsupported command in Phase 1 engine routing.");
     }
 
-    private Result handleSelect(SimpleSelectCommand cmd) throws DBException {
+    private Result handleSelect(SimpleSelectCommand cmd, IWhereTree root) throws DBException {
         String tableName = cmd.getTableName();
-
-        if (!catalog.exists(tableName)) {
-            return Result.error("No such table: " + tableName);
-        }
+        if (!catalog.exists(tableName)) return Result.error("No such table: " + tableName);
 
         Table t = catalog.getTable(tableName);
         Schema s = t.schema();
-
-        // Collect rows first so we can calculate column widths
-        List<model.Record> rows = new java.util.ArrayList<>();
-        for (model.Record r : t.scan()) {
-            rows.add(r);
-        }
-
-        Attribute pk = s.getPrimaryKey();
-        int pkIndex = s.getAttributeIndex(pk.getName());
-
-        rows.sort((r1, r2) -> {
-            Object a = r1.getAttributes().get(pkIndex).getRaw();
-            Object b = r2.getAttributes().get(pkIndex).getRaw();
-            if (a == null && b == null) return 0;
-            if (a == null) return -1;
-            if (b == null) return 1;
-            if (a instanceof Integer && b instanceof Integer) return ((Integer) a).compareTo((Integer) b);
-            if (a instanceof Double && b instanceof Double) return ((Double) a).compareTo((Double) b);
-            if (a instanceof String && b instanceof String) return ((String) a).compareTo((String) b);
-            return a.toString().compareTo(b.toString());
-        });
-
         List<Attribute> attrs = s.getAttributes();
         int colCount = attrs.size();
 
-        // Calculate column widths
+        // Calculate column widths from schema only
         int[] widths = new int[colCount];
         for (int i = 0; i < colCount; i++) {
-            widths[i] = attrs.get(i).getName().length();
-        }
-        for (model.Record r : rows) {
-            for (int i = 0; i < colCount; i++) {
-                Value v = r.getAttributes().get(i);
-                Object raw = (v == null) ? null : v.getRaw();
-                String cell = raw == null ? "NULL" : raw.toString();
-                widths[i] = Math.max(widths[i], cell.length());
-            }
+            widths[i] = getColumnWidth(attrs.get(i));
         }
 
-        StringBuilder out = new StringBuilder();
-
-        // Build divider
+        // Build divider and header
         StringBuilder divider = new StringBuilder("+");
         for (int w : widths) divider.append("-".repeat(w + 2)).append("+");
         divider.append("\n");
 
-        // Header
+        StringBuilder out = new StringBuilder();
         out.append(divider);
         out.append("|");
-        for (int i = 0; i < colCount; i++) {
+        for (int i = 0; i < colCount; i++)
             out.append(String.format(" %-" + widths[i] + "s |", attrs.get(i).getName()));
-        }
         out.append("\n").append(divider);
 
-        // Rows
-        for (model.Record r : rows) {
+        // Single scan, print each record as we find it
+        for (model.Record r : t.scan()) {
             out.append("|");
             for (int i = 0; i < colCount; i++) {
-                Value v = r.getAttributes().get(i);
-                Object raw = (v == null) ? null : v.getRaw();
-                String cell = raw == null ? "NULL" : raw.toString();
-                out.append(String.format(" %-" + widths[i] + "s |", cell));
+                if( root.evaluate(s, r)) {
+                    Value v = r.getAttributes().get(i);
+                    String cell = (v == null || v.getRaw() == null) ? "NULL" : v.getRaw().toString();
+                    out.append(String.format(" %-" + widths[i] + "s |", cell));
+                }
             }
             out.append("\n");
         }
@@ -208,5 +174,32 @@ public class SimpleDBEngine implements DBEngine {
 
 
         return Result.ok(inserted + " rows inserted successfully");
+    }
+
+
+
+    //Helpers
+
+    private int getColumnWidth(Attribute attr) {
+        String name = attr.getName();
+        int typeWidth;
+        switch (attr.getType()) {
+            case CHAR:
+            case VARCHAR:
+                typeWidth = attr.getDataLength();
+                break;
+            case INTEGER:
+                typeWidth = 11; // max int digits + sign
+                break;
+            case DOUBLE:
+                typeWidth = 20; // reasonable max for doubles
+                break;
+            case BOOLEAN:
+                typeWidth = 5; // "false"
+                break;
+            default:
+                typeWidth = 10;
+        }
+        return Math.max(name.length(), typeWidth);
     }
 }
