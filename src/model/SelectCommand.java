@@ -19,6 +19,7 @@ import java.util.List;
 public abstract class SelectCommand extends ParsedCommand {
 
     protected String[] tableNames;
+    protected String orderByAttr;
 
     public SelectCommand(String[] tableNames) {
         this.tableNames = tableNames;
@@ -31,6 +32,14 @@ public abstract class SelectCommand extends ParsedCommand {
 
     public String[] getTableNames() {
         return tableNames;
+    }
+
+    public void setOrderBy(String attr) {
+        this.orderByAttr = attr;
+    }
+
+    public String getOrderByAttr() {
+        return orderByAttr;
     }
 
     public Table from(FileCatalog catalog) throws DBException {
@@ -76,6 +85,36 @@ public abstract class SelectCommand extends ParsedCommand {
         }
 
         return temp;
+    }
+
+    public Table orderBy(Table table) throws DBException {
+        if (orderByAttr == null) return table;
+
+        // Find index of the attribute in the schema
+        int attrIndex = table.schema().getAttributeIndex(orderByAttr);
+        if (attrIndex == -1) {
+            throw new DBException("ORDERBY attribute does not exist: " + orderByAttr);
+        }
+
+        List<Record> records = new ArrayList<>(table.scan());
+
+        records.sort((r1, r2) -> {
+            Object v1 = r1.getValue(attrIndex).getRaw();
+            Object v2 = r2.getValue(attrIndex).getRaw();
+
+            if (v1 == null && v2 == null) return 0;
+            if (v1 == null) return -1;
+            if (v2 == null) return 1;
+
+            if (v1 instanceof Comparable && v2 instanceof Comparable) {
+                return ((Comparable<Object>) v1).compareTo(v2);
+            }
+            return v1.toString().compareTo(v2.toString());
+        });
+
+        TempTable sorted = new TempTable(table.name(), table.schema());
+        for (Record r : records) sorted.insert(r);
+        return sorted;
     }
 }
 
