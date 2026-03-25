@@ -209,4 +209,26 @@ public class SimpleDBEngine implements DBEngine {
 
         return Result.ok(inserted + " rows inserted successfully");
     }
+    private int getColumnWidth(Attribute attr) {
+        String name = attr.getName();
+        int typeWidth;
+        switch (attr.getType()) {
+            case CHAR:
+            case VARCHAR:
+                typeWidth = attr.getDataLength();
+                break;
+            case INTEGER:
+                typeWidth = 11; // max int digits + sign
+                break;
+            case DOUBLE:
+                typeWidth = 20; // reasonable max for doubles
+                break;
+            case BOOLEAN:
+                typeWidth = 5; // "false"
+                break;
+            default:
+                typeWidth = 10;
+        }
+        return Math.max(name.length(), typeWidth);
+    }
 }
