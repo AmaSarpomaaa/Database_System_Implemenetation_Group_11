@@ -67,6 +67,22 @@ public class DDLParser implements DDLProcessor {
 
         return Result.ok("Table dropped successfully");
     }
+    public Result dropTable(String tableName) throws DBException {
+
+        if (!catalog.exists(tableName)) {
+            throw new DBException("Table '" + tableName + "' does not exist.");
+        }
+
+        Table table = catalog.getTable(tableName);
+        for (int pageId : table.getPageIds()) {
+            storage.freePage(pageId);
+        }
+
+        catalog.removeTable(tableName);
+
+        return Result.ok("Table dropped successfully");
+    }
+
 
     @Override
     public Result alterTableAdd(AlterTableAddCommand a) throws DBException {
