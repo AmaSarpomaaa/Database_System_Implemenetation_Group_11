@@ -32,8 +32,8 @@ public class RelopNode implements IWhereTree{
             throw new DBException("Left node and right node are not of the same type");
         }
 
-        Comparable<Object> compRight = (Comparable<Object>) rightValRaw;
-        int comparable = compRight.compareTo(leftValRaw);
+        Comparable<Object> compLeft = (Comparable<Object>)leftValRaw;
+        int comparable = compLeft.compareTo(rightValRaw);
         if(operator.equals("==")){
             return comparable == 0;
         }
