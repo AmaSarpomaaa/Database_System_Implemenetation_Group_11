@@ -1,14 +1,6 @@
 package parser;
 
-import model.Attribute;
-import model.Datatype;
-import model.ParsedCommand;
-import model.CreateTableCommand;
-import model.SimpleSelectCommand;
-import model.InsertCommand;
-import model.DropTableCommand;
-import model.AlterTableAddCommand;
-import model.AlterTableDropCommand;
+import model.*;
 import util.ParseException;
 import java.util.ArrayList;
 import java.util.List;
@@ -237,9 +229,72 @@ public class ParserImplementation implements Parser
 
     }
 
+    private ParsedCommand parseSelect(String input) throws ParseException {
+        Matcher matcher = Pattern.compile("SELECT (?<attributes>(?:(?:\\w+\\.)?\\w+, )*(?:\\w+\\.)?\\w+|\\*)" +
+                                          " FROM (?<tables>(?:\\w+, )*\\w+)" +
+                                          "(?: WHERE (?<where>(?:(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS NULL) )*" +
+                                                             "(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS NULL)))?" +
+                                          "(?: ORDERBY (?<orderBy>(?:\\w+\\.)?\\w+))?;").matcher(input);
+
+        if (matcher.matches()) {
+            //parse tableNames
+            String[] tableNames = matcher.group("tables").split(", ");
+
+            //parse attributeNames
+            ArrayList<String[]> attributeNames = new ArrayList<>();
+            String[] attributesSplit = matcher.group("attributes").split(", ");
+            Pattern qualifiedPattern = Pattern.compile("(?<table>\\w+\\.)(?<attribute>\\w+)");
+
+            for (String attribute : attributesSplit) {
+                Matcher qMatcher = qualifiedPattern.matcher(attribute);
+
+                if (qMatcher.matches()) {
+                    String[] attributeArray = {qMatcher.group("table"), qMatcher.group("attribute")};
+                    attributeNames.add(attributeArray);
+                }
+                else {
+                    attributeNames.add(new String[] {null, attribute});
+                }
+            }
+
+            //parse where
+            String[] whereSplit = matcher.group("where").split(" ");
+            IWhereTree whereTree = IWhereTree.createWhereTree(whereSplit);
+
+            //parse orderBy
+            String[] orderBy;
+            String orderByStr = matcher.group("orderBy");
+            Matcher qMatcher = qualifiedPattern.matcher(orderByStr);
+
+            if (orderByStr == null) {   //intellij says that this is always false, but that's not true, idk why its saying that, don't listen to its suggestion to remove the if statement
+                orderBy = null;
+            }
+            else if (qMatcher.matches()) {
+                orderBy = new String[] {qMatcher.group("table"), qMatcher.group("attribute")};
+            }
+            else {
+                orderBy = new String[] {null, orderByStr};
+            }
+
+            //turn the attribute list into an array
+            Object[] attributeArrayAsObject = attributeNames.toArray();
+            String[][] attributeNameArray = new String[attributeArrayAsObject.length][2];
+
+            for (int i = 0; i < attributeArrayAsObject.length; i++) {
+                attributeNameArray[i] = (String[]) attributeArrayAsObject[i];
+            }
+
+            return new SelectCommand(tableNames, attributeNameArray, whereTree, orderBy);
+        }
+        else {
+            throw new ParseException("Invalid command syntax.");
+        }
+
+    }
+
     //Currently only does "SELECT * FROM <tableName>;"
-    private ParsedCommand parseSelect(String input) throws ParseException
-    {
+    @Deprecated
+    private ParsedCommand parseSimpleSelect(String input) throws ParseException {
         //Check for "SELECT * FROM <tableName>;"
         Pattern pattern = Pattern.compile("SELECT \\* FROM (\\w+);");
         Matcher matcher = pattern.matcher(input);
@@ -264,8 +319,7 @@ public class ParserImplementation implements Parser
         return new SimpleSelectCommand(tableName);
     }
 
-    private ParsedCommand parseInsert(String input) throws ParseException
-{
+    private ParsedCommand parseInsert(String input) throws ParseException {
 
     //Check for "INSERT <tableName> VALUES(<something>);"
     Pattern pattern = Pattern.compile("INSERT (\\w+) VALUES *\\((.*)\\);");
