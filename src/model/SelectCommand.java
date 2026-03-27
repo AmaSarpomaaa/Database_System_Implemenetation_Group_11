@@ -8,6 +8,7 @@ import storage.StorageManager;
 import util.DBException;
 import java.util.ArrayList;
 import java.util.List;
+import ddl.DDLParser;
 
 /**
  * A class to represent a ParsedCommand for a Select statement.
@@ -128,7 +129,7 @@ public class SelectCommand extends ParsedCommand {
      * @return a single Table representing the FROM result
      * @throws DBException if any table doesn't exist or scan fails
      */
-    public Table from(Catalog catalog, StorageManager storage, BufferManager buffer) throws DBException {
+    public Table from(Catalog catalog, StorageManager storage, BufferManager buffer, DDLParser ddl) throws DBException {
         if (tableNames.length == 1) {
             return catalog.getTable(tableNames[0]);
         }
@@ -137,7 +138,13 @@ public class SelectCommand extends ParsedCommand {
 
         for (int i = 1; i < tableNames.length; i++) {
             Table right = catalog.getTable(tableNames[i]);
-            result = cartesianProduct(result, right, catalog, storage, buffer);
+            Table next = cartesianProduct(result, right, catalog, storage, buffer);
+
+            if (i > 1) {
+                ddl.dropTable(result.name());
+            }
+
+            result = next;
         }
 
         return result;
