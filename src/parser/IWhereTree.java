@@ -18,7 +18,8 @@ public interface IWhereTree {
      *                    RelationalOperators (>, >=, <, <=, ==, <>)
      *                    AND, OR, IS, NULL
      * @return The IWhereTree that was created
-     * @throws ParseException
+     * @throws ParseException if the expressions represent an invalid WHERE clause
+     * @throws DBException never
      */
     static IWhereTree createWhereTree (String[] expressions) throws ParseException, DBException {
 
@@ -137,7 +138,8 @@ public interface IWhereTree {
      * and puts the created node onto the value stack
      * @param operation The operation of the node that should be created
      * @param valueStack A stack containing IoperandNodes and IWhereTree nodes as used in the Shunting Yard Algorithm
-     * @throws ParseException
+     * @throws ParseException if the expressions represent an invalid WHERE clause
+     * @throws DBException never
      */
     private static void makeNode(String operation, Stack<Object> valueStack) throws ParseException, DBException {
         String operationType = switch (operation) {
