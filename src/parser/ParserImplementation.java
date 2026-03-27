@@ -258,8 +258,8 @@ public class ParserImplementation implements Parser
             }
 
             //parse where
-//            String[] whereSplit = matcher.group("where").split(" ");
-//            IWhereTree whereTree = IWhereTree.createWhereTree(whereSplit);
+            String[] whereSplit = matcher.group("where").split(" ");
+            IWhereTree whereTree = IWhereTree.createWhereTree(whereSplit);
 
             //parse orderBy
             String[] orderBy;
@@ -284,7 +284,7 @@ public class ParserImplementation implements Parser
                 attributeNameArray[i] = (String[]) attributeArrayAsObject[i];
             }
 
-            return new SelectCommand(tableNames, attributeNameArray, null, orderBy);
+            return new SelectCommand(tableNames, attributeNameArray, whereTree, orderBy);
         }
         else {
             throw new ParseException("Invalid command syntax.");
