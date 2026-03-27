@@ -1,6 +1,7 @@
 package parser;
 
 import model.*;
+import util.DBException;
 import util.ParseException;
 import java.util.ArrayList;
 import java.util.List;
@@ -261,7 +262,12 @@ public class ParserImplementation implements Parser
 
             //parse where
             String[] whereSplit = matcher.group("where").split(" ");
-            IWhereTree whereTree = IWhereTree.createWhereTree(whereSplit);
+            IWhereTree whereTree;
+            try {
+                whereTree = IWhereTree.createWhereTree(whereSplit);
+            } catch (DBException e) {
+                throw new ParseException(e.getMessage());
+            }
 
             //parse orderBy
             String[] orderBy;
