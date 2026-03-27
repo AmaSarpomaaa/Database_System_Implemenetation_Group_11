@@ -11,6 +11,7 @@ public class TableSchema implements Table {
 
     private final String name;
     private final Schema schema;
+    private boolean temporary;
 
     // Persist this list via FileCatalog
     private final List<Integer> pageIds = new ArrayList<>();
@@ -23,6 +24,15 @@ public class TableSchema implements Table {
     public TableSchema(String name, Schema schema, StorageManager storage, BufferManager buffer) {
         this.name = name;
         this.schema = schema;
+        this.storage = storage;
+        this.buffer = buffer;
+        temporary = false;
+    }
+
+    public TableSchema(String name, Schema schema, StorageManager storage, BufferManager buffer, boolean temporary) {
+        this.name = name;
+        this.schema = schema;
+        this.temporary = temporary;
         this.storage = storage;
         this.buffer = buffer;
     }
@@ -52,6 +62,10 @@ public class TableSchema implements Table {
     @Override
     public Schema schema() {
         return schema;
+    }
+
+    public boolean isTemporary() {
+        return temporary;
     }
 
     @Override
