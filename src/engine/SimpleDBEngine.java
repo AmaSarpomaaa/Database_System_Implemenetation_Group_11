@@ -3,6 +3,7 @@ package engine;
 import buffer.BufferManager;
 import catalog.Catalog;
 import catalog.FileCatalog;
+import parser.IWhereTree;
 import parser.ParserImplementation;
 import storage.FileStorageManager;
 import storage.StorageManager;
