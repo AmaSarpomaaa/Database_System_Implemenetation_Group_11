@@ -40,4 +40,9 @@ public class TempTable implements Table {
     public List<Record> scan() throws DBException {
         return new ArrayList<>(records);
     }
+
+    @Override
+    public boolean isTemporary() {
+        return false;
+    }
 }

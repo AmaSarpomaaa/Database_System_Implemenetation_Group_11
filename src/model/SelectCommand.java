@@ -29,24 +29,6 @@ public class SelectCommand extends ParsedCommand {
      * If there is no orderby clause, orderby will be null
      */
     protected String[] orderby;
-
-    /*
-     * array of 2 element string arrays, made up of pairs: [tableName, attributeName]<br>
-     * if the table isn't specified, the tableName will be null<br>
-     * if the command is a select * command (selecting all attributes), attributeNames will be null
-     */
-    protected String[][] attributeNames;
-
-    protected IWhereTree whereTree;
-
-    /*
-     * A pair of strings representing the attribute to orderby in the form:
-     * [tableName, attributeName]<br>
-     * If the table isn't specified, the tableName will be null<br>
-     * If there is no orderby clause, orderby will be null
-     */
-    protected String[] orderby;
-
     /**
      * Creates a SelectCommand of the form SELECT * FROM {tableNames} with no
      * WHERE or ORDERBY clause.
@@ -99,7 +81,7 @@ public class SelectCommand extends ParsedCommand {
      */
     public boolean where(Schema scheme, Record record) throws DBException {
         if (whereTree == null) {
-            return false;
+            return true;
         }
         else {
             return whereTree.evaluate(scheme, record);
@@ -185,7 +167,7 @@ public class SelectCommand extends ParsedCommand {
         mergedAttrs.set(0, new Attribute(first.getName(), false, true, first.getType(), first.getDataLength()));
 
         String tempName = "__temp_" + left.name() + "_" + right.name();
-        TableSchema temp = new TableSchema(tempName, new Schema(mergedAttrs), storage, buffer);
+        TableSchema temp = new TableSchema(tempName, new Schema(mergedAttrs), storage, buffer, true);
         catalog.addTable(temp);
 
         for (Record leftRec : left.scan()) {
@@ -239,41 +221,8 @@ public class SelectCommand extends ParsedCommand {
         });
 
         String tempName = "__temp_orderby_" + table.name();
-        TableSchema sorted = new TableSchema(tempName, table.schema(), storage, buffer);
+        TableSchema sorted = new TableSchema(tempName, table.schema(), storage, buffer, true);
         for (Record r : records) sorted.insert(r);
         return sorted;
     }
-}
-
-    /**
-     * @return true if the command is a SELECT * command; false otherwise
-     */
-    public boolean isSelectStar() {
-        return attributeNames == null;
-    }
-
-    /**
-     * @return true if the command has an ORDERBY clause; false otherwise
-     */
-    public boolean hasWhere() {
-        return whereTree == null;
-    }
-
-    /**
-     * @return A pair of strings representing the attribute to orderby in the
-     * form: [tableName, attributeName]<br>
-     * If the table isn't specified, the tableName will be null;<br><br>
-     * null if there is no orderby clause
-     */
-    public String[] getOrderby() {
-        return orderby;
-    }
-
-    /**
-     * @return true if the command has an ORDERBY clause; false otherwise
-     */
-    public boolean hasOrderby() {
-        return orderby == null;
-    }
-
 }

@@ -120,7 +120,7 @@ public class SimpleDBEngine implements DBEngine {
                 }
             }
             //TODO temp table used to build main table
-            Table fTable = cmd.from(catalog);
+            Table fTable = cmd.from(catalog, storage, buffer);
             temp_tables.add(fTable);
 
             //Where Table
@@ -139,7 +139,7 @@ public class SimpleDBEngine implements DBEngine {
                 throw new DBException("Unsupported table type");
             }
 
-            Table oTable = cmd.orderBy(wTable);
+            Table oTable = cmd.orderBy(wTable, storage, buffer);
             temp_tables.add(oTable);
 
             print_helper(oTable,cmd);
