@@ -54,8 +54,7 @@ public class ParserImplementation implements Parser
      * @return true if the string contains only alphanumeric characters;
      * false otherwise
      */
-    private boolean isAlphanumeric(String str)
-    {
+    private boolean isAlphanumeric(String str) {
         for (int i = 0; i < str.length(); i++)
         {
             if (!Character.isLetterOrDigit(str.charAt(i)))
@@ -67,8 +66,7 @@ public class ParserImplementation implements Parser
         return true;
     }
 
-    private ParsedCommand parseCreate(String input) throws ParseException
-    {
+    private ParsedCommand parseCreate(String input) throws ParseException {
 
         //Check for "CREATE TABLE <tableName> (<something>);
         Pattern pattern = Pattern.compile("CREATE TABLE (\\w+) *\\((.*)\\);");
@@ -241,18 +239,19 @@ public class ParserImplementation implements Parser
 
         if (matcher.matches()) {
             //parse tableNames
-            String[] tableNames = matcher.group("tables").split(", ");
+            String[] tableNames = matcher.group("tables").toLowerCase().split(", ");
 
             //parse attributeNames
             ArrayList<String[]> attributeNames = new ArrayList<>();
-            String[] attributesSplit = matcher.group("attributes").split(", ");
+            String[] attributesSplit = matcher.group("attributes").toLowerCase().split(", ");
             Pattern qualifiedPattern = Pattern.compile("(?<table>\\w+\\.)(?<attribute>\\w+)");
 
             for (String attribute : attributesSplit) {
                 Matcher qMatcher = qualifiedPattern.matcher(attribute);
 
                 if (qMatcher.matches()) {
-                    String[] attributeArray = {qMatcher.group("table"), qMatcher.group("attribute")};
+                    String[] attributeArray = {qMatcher.group("table"),
+                                               qMatcher.group("attribute")};
                     attributeNames.add(attributeArray);
                 }
                 else {
@@ -271,7 +270,7 @@ public class ParserImplementation implements Parser
 
             //parse orderBy
             String[] orderBy;
-            String orderByStr = matcher.group("orderBy");
+            String orderByStr = matcher.group("orderBy").toLowerCase();
             Matcher qMatcher = qualifiedPattern.matcher(orderByStr);
 
             if (orderByStr == null) {   //intellij says that this is always false, but that's not true, idk why its saying that, don't listen to its suggestion to remove the if statement
@@ -662,49 +661,31 @@ public class ParserImplementation implements Parser
 
     private ParsedCommand parseDelete(String input) throws ParseException {
 
-        Pattern pattern = Pattern.compile("DELETE FROM (\\w+)(?: WHERE (.*))?;");
+        Pattern pattern = Pattern.compile("DELETE FROM (?<tableName>\\w+)(?: WHERE (?<where>.*))?;");
         Matcher matcher = pattern.matcher(input);
 
         if (!matcher.matches()) {
             throw new ParseException("Invalid DELETE syntax");
         }
 
-        String tableName = matcher.group(1).toLowerCase();
-        String conditionStr = matcher.group(2);
+        String tableName = matcher.group("tableName").toLowerCase();
 
-        List<model.Condition> conditions = new ArrayList<>();
-
-        if (conditionStr != null) {
-            String[] parts = conditionStr.split("AND");
-
-            for (String part : parts) {
-                String[] tokens = part.trim().split("=");
-
-                if (tokens.length != 2) {
-                    throw new ParseException("Invalid condition: " + part);
-                }
-
-                String attr = tokens[0].trim();
-                String val = tokens[1].trim();
-
-                Object parsedVal;
-                try {
-                    parsedVal = Integer.parseInt(val);
-                } catch (Exception e) {
-                    parsedVal = val;
-                }
-
-                conditions.add(new model.Condition(attr, parsedVal));
-            }
+        String[] whereSplit = matcher.group("where").split(" ");
+        IWhereTree whereTree;
+        try {
+            whereTree = IWhereTree.createWhereTree(whereSplit);
+        } catch (DBException e) {
+            throw new ParseException(e.getMessage());
         }
 
-        return new DeleteCommand(tableName, conditions);
+        return new DeleteCommand(tableName, whereTree);
     }
 
     private ParsedCommand parseUpdate(String input) throws ParseException {
 
         Pattern pattern = Pattern.compile(
-                "UPDATE (\\w+) SET (\\w+) *= *(\\w+)(?: WHERE (.*))?;"
+                "UPDATE (?<tableName>\\w+) SET (?<attributeName>\\w+) *= *(?<value>\\w+)" +
+                       "(?: WHERE (?<where>.*))?;"
         );
         Matcher matcher = pattern.matcher(input);
 
@@ -712,10 +693,10 @@ public class ParserImplementation implements Parser
             throw new ParseException("Invalid UPDATE syntax");
         }
 
-        String tableName = matcher.group(1).toLowerCase();
-        String attr = matcher.group(2);
-        String valueStr = matcher.group(3);
-        String conditionStr = matcher.group(4);
+        String tableName = matcher.group("tableName").toLowerCase();
+        String attr = matcher.group("attributeName");
+        String valueStr = matcher.group("value");
+        String whereStr = matcher.group("where");
 
         Object value;
         try {
@@ -724,29 +705,15 @@ public class ParserImplementation implements Parser
             value = valueStr;
         }
 
-        List<model.Condition> conditions = new ArrayList<>();
-
-        if (conditionStr != null) {
-            String[] parts = conditionStr.split("AND");
-
-            for (String part : parts) {
-                String[] tokens = part.trim().split("=");
-
-                String cAttr = tokens[0].trim();
-                String cValStr = tokens[1].trim();
-
-                Object parsedVal;
-                try {
-                    parsedVal = Integer.parseInt(cValStr);
-                } catch (Exception e) {
-                    parsedVal = cValStr;
-                }
-
-                conditions.add(new model.Condition(cAttr, parsedVal));
-            }
+        String[] whereSplit = whereStr.split(" ");
+        IWhereTree whereTree;
+        try {
+            whereTree = IWhereTree.createWhereTree(whereSplit);
+        } catch (DBException e) {
+            throw new ParseException(e.getMessage());
         }
 
-        return new UpdateCommand(tableName, attr, value, conditions);
+        return new UpdateCommand(tableName, attr, value, whereTree);
     }
 
 }
