@@ -3,6 +3,7 @@ package engine;
 import buffer.BufferManager;
 import catalog.Catalog;
 import catalog.FileCatalog;
+import model.Record;
 import parser.IWhereTree;
 import parser.ParserImplementation;
 import storage.FileStorageManager;
@@ -25,20 +26,21 @@ public class SimpleDBEngine implements DBEngine {
     @Override
     public void startup(String dbLocation, int pageSize, int bufferSize, boolean indexingEnabled) throws DBException {
 
-        // 1) Storage Manager (disk)
-        storage = new FileStorageManager();
-        storage.open(dbLocation, pageSize);
-
-        // 2) Catalog (table definitions)
-        catalog = new FileCatalog(dbLocation);
-        catalog.load();
-
-        if (catalog instanceof FileCatalog fc) {
-            fc.bind(storage, buffer);
+        java.io.File dir = new java.io.File(dbLocation);
+        if (!dir.exists()) {
+            dir.mkdirs();
         }
 
 
-        // 3) Buffer Manager (RAM cache of pages)
+
+        storage = new FileStorageManager();
+        storage.open(dbLocation +"/database.db", pageSize);
+
+        catalog = new FileCatalog(dbLocation + "/database.catalog");
+        catalog.load();
+
+
+
         buffer = new BufferManager();
         buffer.initialize(bufferSize, storage.getPageSize(), storage);
 
@@ -70,7 +72,7 @@ public class SimpleDBEngine implements DBEngine {
         }
     }
 
-    // Helpful getters if your processors need them (optional but useful)
+
     public Catalog getCatalog() { return catalog; }
     public BufferManager getBuffer() { return buffer; }
     public StorageManager getStorage() { return storage; }
@@ -98,6 +100,12 @@ public class SimpleDBEngine implements DBEngine {
 
         // ---------- INSERT ----------
         if (cmd instanceof InsertCommand) return handleInsert((InsertCommand) cmd);
+
+        // ---------- DELETE ----------
+        if (cmd instanceof DeleteCommand) return handleDelete((DeleteCommand) cmd);
+
+// ---------- UPDATE ----------
+        if (cmd instanceof UpdateCommand) return handleUpdate((UpdateCommand) cmd);
 
         throw new DBException("Unsupported command in Phase 1 engine routing.");
     }
@@ -178,6 +186,99 @@ public class SimpleDBEngine implements DBEngine {
 
 
         return Result.ok(inserted + " rows inserted successfully");
+
+
+    }
+
+    private Result handleDelete(DeleteCommand cmd) throws DBException {
+        String tableName = cmd.getTableName();
+
+        if (!catalog.exists(tableName)) {
+            return Result.error("No such table: " + tableName);
+        }
+
+        Table t = catalog.getTable(tableName);
+
+        int deleted = 0;
+
+        if (t instanceof TableSchema ts) {
+            for (int pid : ts.getPageIds()) {
+                Page p = buffer.getPage(pid);
+
+                List<Record> records = p.getRecords();
+
+                for (int i = records.size() - 1; i >= 0; i--) {
+                    Record r = records.get(i);
+
+                    if (matchesCondition(cmd, r, ts.schema())) {
+                        records.remove(i);
+                        deleted++;
+                    }
+                }
+
+                buffer.markDirty(pid);
+            }
+        }
+
+        return Result.ok(deleted + " rows deleted");
+    }
+
+    private Result handleUpdate(UpdateCommand cmd) throws DBException {
+        String tableName = cmd.getTableName();
+
+        if (!catalog.exists(tableName)) {
+            return Result.error("No such table: " + tableName);
+        }
+
+        Table t = catalog.getTable(tableName);
+
+        int updated = 0;
+
+        if (t instanceof TableSchema ts) {
+            Schema schema = ts.schema();
+            int attrIndex = schema.getAttributeIndex(cmd.getAttribute());
+
+            for (int pid : ts.getPageIds()) {
+                Page p = buffer.getPage(pid);
+
+                for (Record r : p.getRecords()) {
+
+                    if (matchesCondition(cmd, r, schema)) {
+
+                        Object newValue = cmd.getValue();
+                        r.getAttributes().set(attrIndex, new Value(newValue));
+                        updated++;
+                    }
+                }
+
+                buffer.markDirty(pid);
+            }
+        }
+
+        return Result.ok(updated + " rows updated");
+    }
+
+    private boolean matchesCondition(Object cmd, Record r, Schema schema) {
+
+        if (cmd instanceof DeleteCommand dc &&
+                (dc.getConditions() == null || dc.getConditions().isEmpty())) return true;
+
+        if (cmd instanceof UpdateCommand uc &&
+                (uc.getConditions() == null || uc.getConditions().isEmpty())) return true;
+
+        List<Condition> conditions =
+                (cmd instanceof DeleteCommand dc) ? dc.getConditions() : ((UpdateCommand) cmd).getConditions();
+
+        for (Condition c : conditions) {
+            int index = schema.getAttributeIndex(c.getAttribute());
+            Object value = r.getAttributes().get(index).getRaw();
+
+            if (!value.equals(c.getValue())) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void print_helper(Table t, SelectCommand s) throws DBException {
