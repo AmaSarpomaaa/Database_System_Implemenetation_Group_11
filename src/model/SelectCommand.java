@@ -203,88 +203,51 @@ public class SelectCommand extends ParsedCommand {
      * @throws DBException if the orderby attribute does not exist
      */
     public Table orderBy(Table table, Catalog catalog, StorageManager storage, BufferManager buffer, DDLParser ddl) throws DBException {
-        if (orderby == null) return table;
+        if (orderby == null) { return table; }
 
-        //String attrName;
-        //if (orderby[0] != null) {
-        //    attrName = orderby[0] + "." + orderby[1];
-        //} else {
-        //    attrName = orderby[1];
-        //}
+        String orderAttrName = orderby[orderby.length - 1];
+        Schema schema = table.schema();
+        List<Attribute> originalAttrs = schema.getAttributes();
 
-        String attrName;
-        attrName = orderby[0];
-        int attrIndex = table.schema().getAttributeIndex(attrName);
-        if (attrIndex == -1) {
-            throw new DBException("ORDERBY attribute does not exist: " + attrName);
-        }
-
-        Comparator<Record> cmp = (r1, r2) -> {
-            Object v1 = r1.getValue(attrIndex).getRaw();
-            Object v2 = r2.getValue(attrIndex).getRaw();
-            if (v1 == null && v2 == null) return 0;
-            if (v1 == null) return -1;
-            if (v2 == null) return 1;
-            if (v1 instanceof Comparable && v2 instanceof Comparable) {
-                return ((Comparable<Object>) v1).compareTo(v2);
+        // Find the index of the orderby attribute
+        int orderIndex = -1;
+        for (int i = 0; i < originalAttrs.size(); i++) {
+            String attrName = originalAttrs.get(i).getName();
+            if (attrName.equals(orderAttrName) || attrName.endsWith("." + orderAttrName)) {
+                orderIndex = i;
+                break;
             }
-            return v1.toString().compareTo(v2.toString());
-        };
-
-        // Build sorted runs, one per page
-        List<String> runNames = new ArrayList<>();
-        List<Integer> pageIds = table.getPageIds();
-
-        for (int i = 0; i < pageIds.size(); i++) {
-            Page p = buffer.getPage(pageIds.get(i));
-            List<Record> records = new ArrayList<>(p.getRecords());
-            records.sort(cmp);
-
-            String runName = "__run_" + table.name() + "_" + i;
-            TableSchema run = new TableSchema(runName, table.schema(), storage, buffer, true);
-            catalog.addTable(run);
-            for (Record r : records) run.insert(r);
-            runNames.add(runName);
+        }
+        if (orderIndex == -1) {
+            throw new DBException("ORDERBY attribute not found: " + orderAttrName);
         }
 
-        // Merge all runs into final sorted table
-        String sortedName = "__temp_orderby_" + table.name();
-        TableSchema sorted = new TableSchema(sortedName, table.schema(), storage, buffer, true);
-        catalog.addTable(sorted);
-
-        // One pointer per run tracking current position
-        List<List<Record>> runRecords = new ArrayList<>();
-        List<Integer> pointers = new ArrayList<>();
-        for (String runName : runNames) {
-            runRecords.add(catalog.getTable(runName).scan());
-            pointers.add(0);
+        // Build new attribute list with the orderby attribute moved to front (as PK)
+        List<Attribute> reorderedAttrs = new ArrayList<>();
+        Attribute pkAttr = originalAttrs.get(orderIndex);
+        reorderedAttrs.add(new Attribute(pkAttr.getName(), false, true, pkAttr.getType(), pkAttr.getDataLength()));
+        for (int i = 0; i < originalAttrs.size(); i++) {
+            if (i == orderIndex) continue;
+            Attribute a = originalAttrs.get(i);
+            reorderedAttrs.add(new Attribute(a.getName(), false, false, a.getType(), a.getDataLength()));
         }
 
-        // keep picking the smallest record across all run pointers
-        while (true) {
-            int minRun = -1;
-            Record minRecord = null;
+        String tempName = "__orderby_" + table.name();
+        TableSchema tempTable = new TableSchema(tempName, new Schema(reorderedAttrs), storage, buffer, true);
+        catalog.addTable(tempTable);
 
-            for (int i = 0; i < runRecords.size(); i++) {
-                if (pointers.get(i) >= runRecords.get(i).size()) continue;
-                Record candidate = runRecords.get(i).get(pointers.get(i));
-                if (minRecord == null || cmp.compare(candidate, minRecord) < 0) {
-                    minRecord = candidate;
-                    minRun = i;
-                }
+        // Insert directly — insert maintains PK order so no need to sort in memory
+        for (Record r : table.scan()) {
+            List<Value> original = r.getAttributes();
+            Record reordered = new Record();
+            reordered.addAttribute(original.get(orderIndex));
+            for (int i = 0; i < original.size(); i++) {
+                if (i == orderIndex) continue;
+                reordered.addAttribute(original.get(i));
             }
-
-            if (minRun == -1) break; // all runs done
-
-            sorted.insert(minRecord);
-            pointers.set(minRun, pointers.get(minRun) + 1);
+            tempTable.insert(reordered, true);
         }
 
-        // Drop all run tables
-        for (String runName : runNames) {
-            ddl.dropTable(runName);
-        }
-
-        return sorted;
+        return tempTable;
     }
 }

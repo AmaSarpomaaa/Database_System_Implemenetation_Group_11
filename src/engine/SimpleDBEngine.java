@@ -107,7 +107,7 @@ public class SimpleDBEngine implements DBEngine {
 // ---------- UPDATE ----------
         if (cmd instanceof UpdateCommand) return handleUpdate((UpdateCommand) cmd);
 
-        throw new DBException("Unsupported command in Phase 1 engine routing.");
+        throw new DBException("Unsupported command.");
     }
 
     private Result handleSelect(SelectCommand cmd, DDLParser ddl) throws DBException {
@@ -119,7 +119,6 @@ public class SimpleDBEngine implements DBEngine {
                     return Result.error("No such table: " + name);
                 }
             }
-            //TODO temp table used to build main table
             Table fTable = cmd.from(catalog, storage, buffer, ddl);
             temp_tables.add(fTable);
 

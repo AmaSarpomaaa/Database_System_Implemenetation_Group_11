@@ -67,9 +67,11 @@ public class TableSchema implements Table {
     public boolean isTemporary() {
         return temporary;
     }
-
     @Override
     public void insert(Record record) throws DBException {
+        insert(record, false);
+    }
+    public void insert(Record record, boolean allowDup) throws DBException {
         if (storage == null || buffer == null) {
             throw new DBException("Table not bound to storage/buffer");
         }
@@ -77,7 +79,7 @@ public class TableSchema implements Table {
         schema.validate(record);
 
         Attribute pk = schema.getPrimaryKey();
-        if (pk == null) {
+        if (pk == null && !allowDup) {
             throw new DBException("Table has no primary key");
         }
         int pkIndex = schema.getAttributeIndex(pk.getName());
@@ -91,7 +93,7 @@ public class TableSchema implements Table {
 
             for (Record existing : records) {
                 Object existingPk = existing.getAttributes().get(pkIndex).getRaw();
-                if (pkValue != null && pkValue.equals(existingPk)) {
+                if (pkValue != null && pkValue.equals(existingPk) && !allowDup) {
                     throw new DBException("duplicate primary key value: ( " + pkValue + " )");
                 }
             }

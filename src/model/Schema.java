@@ -24,6 +24,17 @@ public class Schema {
         return null;
     }
 
+    public void setPK(String name){
+        for (Attribute attr : attributeList) {
+            if (attr.unique) {
+                attr.setUnique(false);
+            }
+            if(attr.name.equals(name)){
+                attr.setUnique(true);
+            }
+        }
+    }
+
     /**
      * Get the index of an attribute by name
      * Returns -1 if not found
