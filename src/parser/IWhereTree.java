@@ -11,10 +11,10 @@ import java.util.regex.Pattern;
 
 public interface IWhereTree {
 
-    public static IWhereTree createWhereTree (String[] whereString) {
+    static IWhereTree createWhereTree (String[] whereString) {
 
         Stack<String> operationStack = new Stack<>();
-        Stack<IWhereTree> valueStack = new Stack<>();
+        Stack<Object> valueStack = new Stack<>();
 
         for (String expression : whereString) {
 
@@ -25,7 +25,7 @@ public interface IWhereTree {
             try {
                 value = new Value(Integer.parseInt(expression));
                 ValueNode node = new ValueNode(value);
-                valueStack.push();
+                valueStack.push(node);
                 continue;
             }
             catch (NumberFormatException ignored) {}
@@ -33,6 +33,8 @@ public interface IWhereTree {
             //check double
             try {
                 value = new Value(Double.parseDouble(expression));
+                ValueNode node = new ValueNode(value);
+                valueStack.push(node);
                 continue;
             }
             catch (NumberFormatException ignored) {}
@@ -40,16 +42,22 @@ public interface IWhereTree {
             //boolean
             if (expression.equals("True")) {
                 value = new Value(true);
+                ValueNode node = new ValueNode(value);
+                valueStack.push(node);
                 continue;
             }
             else if (expression.equals("False")) {
                 value = new Value(false);
+                ValueNode node = new ValueNode(value);
+                valueStack.push(node);
                 continue;
             }
 
             //null
             if (expression.equals("NULL")) {
                 value = new Value(null);
+                ValueNode node = new ValueNode(value);
+                valueStack.push(node);
                 continue;
             }
 
@@ -58,10 +66,18 @@ public interface IWhereTree {
 
             if (charMatcher.matches()) {
                 value = new Value(charMatcher.group(1));
+                ValueNode node = new ValueNode(value);
+                valueStack.push(node);
                 continue;
             }
 
-            //if it gets here its not a value node
+            //if it gets here it's not a value node
+
+            //check for operation node
+            switch (expression) {
+                //relops
+                case ">":
+            }
 
 
         }
