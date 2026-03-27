@@ -53,4 +53,8 @@ public class Attribute {
     public boolean isNotNull() { return not_null; }
     public boolean isPrimaryKey() { return unique; }
     public Datatype getType() { return type; }
+
+    public void setUnique(boolean u){
+        unique = u;
+    }
 }

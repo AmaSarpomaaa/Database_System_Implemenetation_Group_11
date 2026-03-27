@@ -35,6 +35,8 @@ public class ParserImplementation implements Parser
                 case "INSERT" -> parseInsert(input);
                 case "DROP" -> parseDrop(input);
                 case "ALTER" -> parseAlter(input);
+                case "DELETE" -> parseDelete(input);
+                case "UPDATE" -> parseUpdate(input);
                 default -> throw new ParseException("Invalid command");
             };
         }
@@ -316,7 +318,8 @@ public class ParserImplementation implements Parser
             throw new ParseException("Invalid command syntax.");
         }
 
-        return new SimpleSelectCommand(tableName);
+        String[] names = {tableName};
+        return new SelectCommand(names);
     }
 
     private ParsedCommand parseInsert(String input) throws ParseException {
@@ -649,6 +652,95 @@ public class ParserImplementation implements Parser
 
         return new AlterTableDropCommand(tableName, attributeName);
 
+    }
+
+    private ParsedCommand parseDelete(String input) throws ParseException {
+
+        Pattern pattern = Pattern.compile("DELETE FROM (\\w+)(?: WHERE (.*))?;");
+        Matcher matcher = pattern.matcher(input);
+
+        if (!matcher.matches()) {
+            throw new ParseException("Invalid DELETE syntax");
+        }
+
+        String tableName = matcher.group(1).toLowerCase();
+        String conditionStr = matcher.group(2);
+
+        List<model.Condition> conditions = new ArrayList<>();
+
+        if (conditionStr != null) {
+            String[] parts = conditionStr.split("AND");
+
+            for (String part : parts) {
+                String[] tokens = part.trim().split("=");
+
+                if (tokens.length != 2) {
+                    throw new ParseException("Invalid condition: " + part);
+                }
+
+                String attr = tokens[0].trim();
+                String val = tokens[1].trim();
+
+                Object parsedVal;
+                try {
+                    parsedVal = Integer.parseInt(val);
+                } catch (Exception e) {
+                    parsedVal = val;
+                }
+
+                conditions.add(new model.Condition(attr, parsedVal));
+            }
+        }
+
+        return new DeleteCommand(tableName, conditions);
+    }
+
+    private ParsedCommand parseUpdate(String input) throws ParseException {
+
+        Pattern pattern = Pattern.compile(
+                "UPDATE (\\w+) SET (\\w+) *= *(\\w+)(?: WHERE (.*))?;"
+        );
+        Matcher matcher = pattern.matcher(input);
+
+        if (!matcher.matches()) {
+            throw new ParseException("Invalid UPDATE syntax");
+        }
+
+        String tableName = matcher.group(1).toLowerCase();
+        String attr = matcher.group(2);
+        String valueStr = matcher.group(3);
+        String conditionStr = matcher.group(4);
+
+        Object value;
+        try {
+            value = Integer.parseInt(valueStr);
+        } catch (Exception e) {
+            value = valueStr;
+        }
+
+        List<model.Condition> conditions = new ArrayList<>();
+
+        if (conditionStr != null) {
+            String[] parts = conditionStr.split("AND");
+
+            for (String part : parts) {
+                String[] tokens = part.trim().split("=");
+
+                String cAttr = tokens[0].trim();
+                String cValStr = tokens[1].trim();
+
+                Object parsedVal;
+                try {
+                    parsedVal = Integer.parseInt(cValStr);
+                } catch (Exception e) {
+                    parsedVal = cValStr;
+                }
+
+                conditions.add(new model.Condition(cAttr, parsedVal));
+            }
+        }
+
+        return new UpdateCommand(tableName, attr, value, conditions);
     }
 
 }
