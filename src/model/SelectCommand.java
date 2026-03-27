@@ -13,6 +13,7 @@ import java.util.List;
  * A class to represent a ParsedCommand for a Select statement.
  */
 public class SelectCommand extends ParsedCommand {
+
     protected String[] tableNames;
     /*
      * array of 2 element string arrays, made up of pairs: [tableName, attributeName]<br>
@@ -21,6 +22,23 @@ public class SelectCommand extends ParsedCommand {
      */
     protected String[][] attributeNames;
     protected IWhereTree whereTree;
+    /*
+     * A pair of strings representing the attribute to orderby in the form:
+     * [tableName, attributeName]<br>
+     * If the table isn't specified, the tableName will be null<br>
+     * If there is no orderby clause, orderby will be null
+     */
+    protected String[] orderby;
+
+    /*
+     * array of 2 element string arrays, made up of pairs: [tableName, attributeName]<br>
+     * if the table isn't specified, the tableName will be null<br>
+     * if the command is a select * command (selecting all attributes), attributeNames will be null
+     */
+    protected String[][] attributeNames;
+
+    protected IWhereTree whereTree;
+
     /*
      * A pair of strings representing the attribute to orderby in the form:
      * [tableName, attributeName]<br>
@@ -227,3 +245,35 @@ public class SelectCommand extends ParsedCommand {
     }
 }
 
+    /**
+     * @return true if the command is a SELECT * command; false otherwise
+     */
+    public boolean isSelectStar() {
+        return attributeNames == null;
+    }
+
+    /**
+     * @return true if the command has an ORDERBY clause; false otherwise
+     */
+    public boolean hasWhere() {
+        return whereTree == null;
+    }
+
+    /**
+     * @return A pair of strings representing the attribute to orderby in the
+     * form: [tableName, attributeName]<br>
+     * If the table isn't specified, the tableName will be null;<br><br>
+     * null if there is no orderby clause
+     */
+    public String[] getOrderby() {
+        return orderby;
+    }
+
+    /**
+     * @return true if the command has an ORDERBY clause; false otherwise
+     */
+    public boolean hasOrderby() {
+        return orderby == null;
+    }
+
+}
