@@ -102,7 +102,7 @@ public class SimpleDBEngine implements DBEngine {
     }
 
     private Result handleSelect(SimpleSelectCommand cmd, DDLParser ddl) throws DBException {
-        ArrayList<String> temp_names = new ArrayList<String>();
+        ArrayList<Table> temp_tables = new ArrayList<Table>();
         try {
             //error checking
             for (String name : cmd.getTableNames()) {
@@ -112,11 +112,11 @@ public class SimpleDBEngine implements DBEngine {
             }
             //TODO temp table used to build main table
             Table fTable = cmd.from(catalog);
-            temp_names.add(fTable.name());
+            temp_tables.add(fTable);
 
             //Where Table
             Table wTable = new TableSchema("w_table", fTable.schema(), storage, buffer);
-            temp_names.add(wTable.name());
+            temp_tables.add(wTable);
             if (fTable instanceof TableSchema fts) {
                 for (int pid : fts.getPageIds()) {
                     Page p = buffer.getPage(pid);
@@ -131,15 +131,16 @@ public class SimpleDBEngine implements DBEngine {
             }
 
             Table oTable = cmd.orderBy(wTable);
-            temp_names.add(oTable.name());
+            temp_tables.add(oTable);
 
             print_helper(oTable,cmd);
 
 
         } finally{
-            //ALways drop temp tables
-            for (String name : temp_names) {
-                ddl.dropTable(name);
+            //Always drop temp tables
+            for (Table t : temp_tables) {
+                if (t.isTemporary())
+                    ddl.dropTable(t.name());
             }
         }
 
