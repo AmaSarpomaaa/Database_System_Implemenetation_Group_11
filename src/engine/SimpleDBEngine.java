@@ -133,7 +133,7 @@ public class SimpleDBEngine implements DBEngine {
             Table oTable = cmd.orderBy(wTable);
             temp_names.add(oTable.name());
 
-            print_helper(cmd, oTable);
+            print_helper(oTable,cmd);
 
 
         } finally{
