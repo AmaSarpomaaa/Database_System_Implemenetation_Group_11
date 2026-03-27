@@ -7,6 +7,7 @@ public interface Table {
 
     String name();
     Schema schema();
+    boolean isTemporary();
     void insert(Record record) throws DBException;
 
     List<Record> scan() throws DBException;
