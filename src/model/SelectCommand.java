@@ -9,6 +9,7 @@ import util.DBException;
 import java.util.ArrayList;
 import java.util.List;
 import ddl.DDLParser;
+import java.util.Comparator;
 
 /**
  * A class to represent a ParsedCommand for a Select statement.
@@ -39,7 +40,8 @@ public class SelectCommand extends ParsedCommand {
         this.tableNames = tableNames;
         this.attributeNames = null;
         this.whereTree = null;
-        this.orderby = null;
+        String[] array = {"y"};
+        this.orderby = array;
     }
 
     public SelectCommand(String[] tableNames, String[][] attributeNames,
@@ -47,7 +49,8 @@ public class SelectCommand extends ParsedCommand {
         this.tableNames = tableNames;
         this.attributeNames = attributeNames;
         this.whereTree = whereTree;
-        this.orderby = orderby;
+        String[] array = {"y"};
+        this.orderby = array;
     }
 
     @Override
@@ -199,23 +202,24 @@ public class SelectCommand extends ParsedCommand {
      * @return a Table with records sorted by the orderby attribute
      * @throws DBException if the orderby attribute does not exist
      */
-    public Table orderBy(Table table, StorageManager storage, BufferManager buffer) throws DBException {
+    public Table orderBy(Table table, Catalog catalog, StorageManager storage, BufferManager buffer, DDLParser ddl) throws DBException {
         if (orderby == null) return table;
 
-        String attrName;
-        if (orderby[0] != null) {
-            attrName = orderby[0] + "." + orderby[1];
-        } else {
-            attrName = orderby[1];
-        }
+        //String attrName;
+        //if (orderby[0] != null) {
+        //    attrName = orderby[0] + "." + orderby[1];
+        //} else {
+        //    attrName = orderby[1];
+        //}
 
+        String attrName;
+        attrName = orderby[0];
         int attrIndex = table.schema().getAttributeIndex(attrName);
         if (attrIndex == -1) {
             throw new DBException("ORDERBY attribute does not exist: " + attrName);
         }
 
-        List<Record> records = new ArrayList<>(table.scan());
-        records.sort((r1, r2) -> {
+        Comparator<Record> cmp = (r1, r2) -> {
             Object v1 = r1.getValue(attrIndex).getRaw();
             Object v2 = r2.getValue(attrIndex).getRaw();
             if (v1 == null && v2 == null) return 0;
@@ -225,11 +229,62 @@ public class SelectCommand extends ParsedCommand {
                 return ((Comparable<Object>) v1).compareTo(v2);
             }
             return v1.toString().compareTo(v2.toString());
-        });
+        };
 
-        String tempName = "__temp_orderby_" + table.name();
-        TableSchema sorted = new TableSchema(tempName, table.schema(), storage, buffer, true);
-        for (Record r : records) sorted.insert(r);
+        // Build sorted runs, one per page
+        List<String> runNames = new ArrayList<>();
+        List<Integer> pageIds = table.getPageIds();
+
+        for (int i = 0; i < pageIds.size(); i++) {
+            Page p = buffer.getPage(pageIds.get(i));
+            List<Record> records = new ArrayList<>(p.getRecords());
+            records.sort(cmp);
+
+            String runName = "__run_" + table.name() + "_" + i;
+            TableSchema run = new TableSchema(runName, table.schema(), storage, buffer, true);
+            catalog.addTable(run);
+            for (Record r : records) run.insert(r);
+            runNames.add(runName);
+        }
+
+        // Merge all runs into final sorted table
+        String sortedName = "__temp_orderby_" + table.name();
+        TableSchema sorted = new TableSchema(sortedName, table.schema(), storage, buffer, true);
+        catalog.addTable(sorted);
+
+        // One pointer per run tracking current position
+        List<List<Record>> runRecords = new ArrayList<>();
+        List<Integer> pointers = new ArrayList<>();
+        for (String runName : runNames) {
+            runRecords.add(catalog.getTable(runName).scan());
+            pointers.add(0);
+        }
+
+        // keep picking the smallest record across all run pointers
+        while (true) {
+            int minRun = -1;
+            Record minRecord = null;
+
+            for (int i = 0; i < runRecords.size(); i++) {
+                if (pointers.get(i) >= runRecords.get(i).size()) continue;
+                Record candidate = runRecords.get(i).get(pointers.get(i));
+                if (minRecord == null || cmp.compare(candidate, minRecord) < 0) {
+                    minRecord = candidate;
+                    minRun = i;
+                }
+            }
+
+            if (minRun == -1) break; // all runs done
+
+            sorted.insert(minRecord);
+            pointers.set(minRun, pointers.get(minRun) + 1);
+        }
+
+        // Drop all run tables
+        for (String runName : runNames) {
+            ddl.dropTable(runName);
+        }
+
         return sorted;
     }
 }
