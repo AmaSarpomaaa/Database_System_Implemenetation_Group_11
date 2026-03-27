@@ -11,6 +11,7 @@ public class TableSchema implements Table {
 
     private final String name;
     private final Schema schema;
+    private boolean temporary;
 
     // Persist this list via FileCatalog
     private final List<Integer> pageIds = new ArrayList<>();
@@ -23,6 +24,15 @@ public class TableSchema implements Table {
     public TableSchema(String name, Schema schema, StorageManager storage, BufferManager buffer) {
         this.name = name;
         this.schema = schema;
+        this.storage = storage;
+        this.buffer = buffer;
+        temporary = false;
+    }
+
+    public TableSchema(String name, Schema schema, StorageManager storage, BufferManager buffer, boolean temporary) {
+        this.name = name;
+        this.schema = schema;
+        this.temporary = temporary;
         this.storage = storage;
         this.buffer = buffer;
     }
@@ -54,39 +64,107 @@ public class TableSchema implements Table {
         return schema;
     }
 
+    public boolean isTemporary() {
+        return temporary;
+    }
+
     @Override
     public void insert(Record record) throws DBException {
         if (storage == null || buffer == null) {
             throw new DBException("Table not bound to storage/buffer");
         }
 
-        // Validate record size + types + not null
         schema.validate(record);
 
-        // Primary key uniqueness (scan existing pages)
         Attribute pk = schema.getPrimaryKey();
-        if (pk != null) {
-            int pkIndex = schema.getAttributeIndex(pk.getName());
-            Object pkValue = record.getAttributes().get(pkIndex).getRaw();
+        if (pk == null) {
+            throw new DBException("Table has no primary key");
+        }
+        int pkIndex = schema.getAttributeIndex(pk.getName());
+        Object pkValue = record.getAttributes().get(pkIndex).getRaw();
 
-            for (int pid : pageIds) {
-                Page p = buffer.getPage(pid);
-                for (Record existing : p.getRecords()) {
-                    Object existingPk = existing.getAttributes().get(pkIndex).getRaw();
-                    if (pkValue != null && pkValue.equals(existingPk)) {
-                        throw new DBException("duplicate primary key value: ( " + pkValue + " )");
-                    }
+        // check duplicates + find insertion page
+        for (int i = 0; i < pageIds.size(); i++) {
+            int pid = pageIds.get(i);
+            Page p = buffer.getPage(pid);
+            List<Record> records = p.getRecords();
+
+            for (Record existing : records) {
+                Object existingPk = existing.getAttributes().get(pkIndex).getRaw();
+                if (pkValue != null && pkValue.equals(existingPk)) {
+                    throw new DBException("duplicate primary key value: ( " + pkValue + " )");
+                }
+            }
+
+            boolean isLastPage = (i == pageIds.size() - 1);
+
+            // record belongs in this page if its key <= last key on page, OR this is the last page
+            Object lastPk = records.isEmpty() ? null : records.get(records.size() - 1).getAttributes().get(pkIndex).getRaw();
+            if (records.isEmpty() || compareKeys(pkValue, lastPk) <= 0 || isLastPage) {
+                if (buffer.canFitRecord(p, record)) {
+                    insertIntoSortedPosition(records, record, pkIndex);
+                    buffer.markDirty(pid);
+                    return;
+                } else {
+                    insertIntoSortedPosition(records, record, pkIndex);
+                    splitPage(i, p);
+                    buffer.markDirty(pid);
+                    return;
                 }
             }
         }
 
-        // Phase 1 simplification: 1 record per page
+        // no pages yet
         int pid = storage.allocatePage();
-        pageIds.add(pid);  // ← moved to after PK check
-
-        Page p = buffer.getPage(pid);
-        p.addRecord(record);
+        pageIds.add(pid);
+        Page newPage = buffer.getPage(pid);
+        newPage.addRecord(record);
         buffer.markDirty(pid);
+    }
+
+    private void insertIntoSortedPosition(List<Record> records, Record record, int pkIndex) {
+        Object newPk = record.getAttributes().get(pkIndex).getRaw();
+
+        for (int i = 0; i < records.size(); i++) {
+            Object currentPk = records.get(i).getAttributes().get(pkIndex).getRaw();
+            if (compareKeys(newPk, currentPk) < 0) {
+                records.add(i, record);
+                return;
+            }
+        }
+
+        records.add(record);
+    }
+
+    @SuppressWarnings("unchecked")
+    private int compareKeys(Object a, Object b) {
+        if (a == null && b == null) return 0;
+        if (a == null) return -1;
+        if (b == null) return 1;
+
+        if (a.getClass().equals(b.getClass()) && a instanceof Comparable) {
+            return ((Comparable<Object>) a).compareTo(b);
+        }
+
+        return a.toString().compareTo(b.toString());
+    }
+
+    private void splitPage(int pageIndex, Page page) throws DBException {
+        int newPid = storage.allocatePage();
+        Page newPage = buffer.getPage(newPid);
+
+        int mid = page.size() / 2;
+
+        // move second half into new page
+        while (page.size() > mid) {
+            Record moved = page.removeRecordAt(mid);
+            newPage.addRecord(moved);
+        }
+
+        pageIds.add(pageIndex + 1, newPid);
+
+        buffer.markDirty(page.getPageID());
+        buffer.markDirty(newPid);
     }
 
 
