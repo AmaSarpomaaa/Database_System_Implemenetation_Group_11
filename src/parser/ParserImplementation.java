@@ -258,8 +258,8 @@ public class ParserImplementation implements Parser
             }
 
             //parse where
-            String[] whereSplit = matcher.group("where").split(" ");
-            IWhereTree whereTree = IWhereTree.createWhereTree(whereSplit);
+//            String[] whereSplit = matcher.group("where").split(" ");
+//            IWhereTree whereTree = IWhereTree.createWhereTree(whereSplit);
 
             //parse orderBy
             String[] orderBy;
