@@ -96,7 +96,7 @@ public class SimpleDBEngine implements DBEngine {
         if (cmd instanceof AlterTableDropCommand) return ddl.alterTableDrop((AlterTableDropCommand) cmd);
 
         // ---------- SELECT ----------
-        if (cmd instanceof SimpleSelectCommand) return handleSelect((SimpleSelectCommand) cmd, ddl);
+        if (cmd instanceof SelectCommand) return handleSelect((SelectCommand) cmd, ddl);
 
         // ---------- INSERT ----------
         if (cmd instanceof InsertCommand) return handleInsert((InsertCommand) cmd);
@@ -110,7 +110,7 @@ public class SimpleDBEngine implements DBEngine {
         throw new DBException("Unsupported command in Phase 1 engine routing.");
     }
 
-    private Result handleSelect(SimpleSelectCommand cmd, DDLParser ddl) throws DBException {
+    private Result handleSelect(SelectCommand cmd, DDLParser ddl) throws DBException {
         ArrayList<Table> temp_tables = new ArrayList<Table>();
         try {
             //error checking

@@ -1,16 +1,6 @@
 package parser;
 
-import model.Attribute;
-import model.Datatype;
-import model.ParsedCommand;
-import model.CreateTableCommand;
-import model.SimpleSelectCommand;
-import model.InsertCommand;
-import model.DropTableCommand;
-import model.AlterTableAddCommand;
-import model.AlterTableDropCommand;
-import model.DeleteCommand;
-import model.UpdateCommand;
+import model.*;
 import util.ParseException;
 import java.util.ArrayList;
 import java.util.List;
@@ -265,7 +255,8 @@ public class ParserImplementation implements Parser
             throw new ParseException("Invalid command syntax.");
         }
 
-        return new SimpleSelectCommand(tableName);
+        String[] names = {tableName};
+        return new SelectCommand(names);
     }
 
     private ParsedCommand parseInsert(String input) throws ParseException
