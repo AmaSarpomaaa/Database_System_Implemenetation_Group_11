@@ -40,7 +40,7 @@ public class SelectCommand extends ParsedCommand {
         this.tableNames = tableNames;
         this.attributeNames = null;
         this.whereTree = null;
-        String[] array = {"y"};
+        String[] array = null;
         this.orderby = array;
     }
 
@@ -49,7 +49,7 @@ public class SelectCommand extends ParsedCommand {
         this.tableNames = tableNames;
         this.attributeNames = attributeNames;
         this.whereTree = whereTree;
-        String[] array = {"y"};
+        String[] array = orderby;
         this.orderby = array;
     }
 
@@ -207,12 +207,11 @@ public class SelectCommand extends ParsedCommand {
 
         String orderAttrName = orderby[orderby.length - 1];
         Schema schema = table.schema();
-        List<Attribute> originalAttrs = schema.getAttributes();
+        List<Attribute> attrs = schema.getAttributes();
 
-        // Find the index of the orderby attribute
         int orderIndex = -1;
-        for (int i = 0; i < originalAttrs.size(); i++) {
-            String attrName = originalAttrs.get(i).getName();
+        for (int i = 0; i < attrs.size(); i++) {
+            String attrName = attrs.get(i).getName();
             if (attrName.equals(orderAttrName) || attrName.endsWith("." + orderAttrName)) {
                 orderIndex = i;
                 break;
@@ -222,32 +221,89 @@ public class SelectCommand extends ParsedCommand {
             throw new DBException("ORDERBY attribute not found: " + orderAttrName);
         }
 
-        // Build new attribute list with the orderby attribute moved to front (as PK)
-        List<Attribute> reorderedAttrs = new ArrayList<>();
-        Attribute pkAttr = originalAttrs.get(orderIndex);
-        reorderedAttrs.add(new Attribute(pkAttr.getName(), false, true, pkAttr.getType(), pkAttr.getDataLength()));
-        for (int i = 0; i < originalAttrs.size(); i++) {
-            if (i == orderIndex) continue;
-            Attribute a = originalAttrs.get(i);
-            reorderedAttrs.add(new Attribute(a.getName(), false, false, a.getType(), a.getDataLength()));
+        final int idx = orderIndex;
+        Comparator<Record> cmp = Comparator.comparing(r -> (Comparable) r.getAttributes().get(idx).getRaw());
+
+        if (!(table instanceof TableSchema ts)) {
+            throw new DBException("Unsupported table type");
         }
 
+        // Phase 1: sort each page individually, write out as sorted run tables
+        List<TableSchema> runs = new ArrayList<>();
+        for (int pid : ts.getPageIds()) {
+            Page p = buffer.getPage(pid);
+            List<Record> pageRecords = new ArrayList<>(p.getRecords()); // one page at a time
+            pageRecords.sort(cmp);
+
+            String runName = "__run_" + runs.size() + "_" + table.name();
+            TableSchema run = new TableSchema(runName, schema, storage, buffer, true);
+            catalog.addTable(run);
+            for (Record r : pageRecords) {
+                run.append(r);
+            }
+            runs.add(run);
+        }
+
+        // Phase 2: k-way merge — one record per run in memory at a time
         String tempName = "__orderby_" + table.name();
-        TableSchema tempTable = new TableSchema(tempName, new Schema(reorderedAttrs), storage, buffer, true);
+        TableSchema tempTable = new TableSchema(tempName, schema, storage, buffer, true);
         catalog.addTable(tempTable);
 
-        // Insert directly — insert maintains PK order so no need to sort in memory
-        for (Record r : table.scan()) {
-            List<Value> original = r.getAttributes();
-            Record reordered = new Record();
-            reordered.addAttribute(original.get(orderIndex));
-            for (int i = 0; i < original.size(); i++) {
-                if (i == orderIndex) continue;
-                reordered.addAttribute(original.get(i));
+        // Track current position in each run
+        List<List<Integer>> runPageIds = new ArrayList<>();
+        List<Integer> pageIdx = new ArrayList<>();
+        List<Integer> recordIdx = new ArrayList<>();
+        List<Record> heads = new ArrayList<>(); // one record per run
+
+        for (TableSchema run : runs) {
+            runPageIds.add(run.getPageIds());
+            pageIdx.add(0);
+            recordIdx.add(0);
+            heads.add(nextRecord(run.getPageIds(), 0, 0, buffer));
+        }
+
+        while (true) {
+            // find run with smallest head
+            int minRun = -1;
+            for (int i = 0; i < heads.size(); i++) {
+                if (heads.get(i) == null) continue;
+                if (minRun == -1 || cmp.compare(heads.get(i), heads.get(minRun)) < 0) {
+                    minRun = i;
+                }
             }
-            tempTable.insert(reordered, true);
+            if (minRun == -1) break; // all exhausted
+
+            tempTable.append(heads.get(minRun));
+
+            // advance that run
+            int rIdx = recordIdx.get(minRun);
+            int pIdx = pageIdx.get(minRun);
+            List<Integer> pids = runPageIds.get(minRun);
+
+            Page curPage = buffer.getPage(pids.get(pIdx));
+            rIdx++;
+            if (rIdx >= curPage.getRecords().size()) {
+                rIdx = 0;
+                pIdx++;
+            }
+            pageIdx.set(minRun, pIdx);
+            recordIdx.set(minRun, rIdx);
+            heads.set(minRun, nextRecord(pids, pIdx, rIdx, buffer));
+        }
+
+        // drop run tables
+        for (TableSchema run : runs) {
+            ddl.dropTable(run.name());
         }
 
         return tempTable;
+    }
+
+    private Record nextRecord(List<Integer> pageIds, int pIdx, int rIdx, BufferManager buffer) throws DBException {
+        if (pIdx >= pageIds.size()) return null;
+        Page p = buffer.getPage(pageIds.get(pIdx));
+        List<Record> records = p.getRecords();
+        if (rIdx >= records.size()) return null;
+        return records.get(rIdx);
     }
 }

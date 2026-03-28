@@ -102,7 +102,7 @@ public class SimpleDBEngine implements DBEngine {
         if (cmd instanceof InsertCommand) return handleInsert((InsertCommand) cmd);
 
         // ---------- DELETE ----------
-        if (cmd instanceof DeleteCommand) return handleDelete((DeleteCommand) cmd);
+        if (cmd instanceof DeleteCommand) return handleDelete((DeleteCommand) cmd, ddl);
 
 // ---------- UPDATE ----------
         if (cmd instanceof UpdateCommand) return handleUpdate((UpdateCommand) cmd);
@@ -189,34 +189,32 @@ public class SimpleDBEngine implements DBEngine {
 
     }
 
-    private Result handleDelete(DeleteCommand cmd) throws DBException {
+    private Result handleDelete(DeleteCommand cmd, DDLParser ddl) throws DBException {
         String tableName = cmd.getTableName();
 
         if (!catalog.exists(tableName)) {
             return Result.error("No such table: " + tableName);
         }
 
-        Table t = catalog.getTable(tableName);
+        if (!(catalog.getTable(tableName) instanceof TableSchema ts)) {
+            throw new DBException("Unsupported table type");
+        }
 
         int deleted = 0;
 
-        if (t instanceof TableSchema ts) {
-            for (int pid : ts.getPageIds()) {
-                Page p = buffer.getPage(pid);
+        for (int pid : ts.getPageIds()) {
+            Page p = buffer.getPage(pid);
+            List<Record> records = p.getRecords();
 
-                List<Record> records = p.getRecords();
-
-                for (int i = records.size() - 1; i >= 0; i--) {
-                    Record r = records.get(i);
-
-                    if (matchesCondition(cmd, r, ts.schema())) {
-                        records.remove(i);
-                        deleted++;
-                    }
+            for (int i = records.size() - 1; i >= 0; i--) {
+                Record r = records.get(i);
+                if (cmd.where(ts.schema(), r)) {
+                    records.remove(i);
+                    deleted++;
                 }
-
-                buffer.markDirty(pid);
             }
+
+            buffer.markDirty(pid);
         }
 
         return Result.ok(deleted + " rows deleted");
@@ -229,56 +227,31 @@ public class SimpleDBEngine implements DBEngine {
             return Result.error("No such table: " + tableName);
         }
 
-        Table t = catalog.getTable(tableName);
+        if (!(catalog.getTable(tableName) instanceof TableSchema ts)) {
+            throw new DBException("Unsupported table type");
+        }
 
+        Schema schema = ts.schema();
+        int attrIndex = schema.getAttributeIndex(cmd.getAttribute());
         int updated = 0;
 
-        if (t instanceof TableSchema ts) {
-            Schema schema = ts.schema();
-            int attrIndex = schema.getAttributeIndex(cmd.getAttribute());
+        for (int pid : ts.getPageIds()) {
+            Page p = buffer.getPage(pid);
 
-            for (int pid : ts.getPageIds()) {
-                Page p = buffer.getPage(pid);
-
-                for (Record r : p.getRecords()) {
-
-                    if (matchesCondition(cmd, r, schema)) {
-
-                        Object newValue = cmd.getValue();
-                        r.getAttributes().set(attrIndex, new Value(newValue));
-                        updated++;
-                    }
+            for (Record r : p.getRecords()) {
+                if (cmd.where(schema, r)) {
+                    r.getAttributes().set(attrIndex, new Value(cmd.getValue()));
+                    updated++;
                 }
-
-                buffer.markDirty(pid);
             }
+
+            buffer.markDirty(pid);
         }
 
         return Result.ok(updated + " rows updated");
     }
 
-    private boolean matchesCondition(Object cmd, Record r, Schema schema) {
 
-        if (cmd instanceof DeleteCommand dc &&
-                (dc.getConditions() == null || dc.getConditions().isEmpty())) return true;
-
-        if (cmd instanceof UpdateCommand uc &&
-                (uc.getConditions() == null || uc.getConditions().isEmpty())) return true;
-
-        List<Condition> conditions =
-                (cmd instanceof DeleteCommand dc) ? dc.getConditions() : ((UpdateCommand) cmd).getConditions();
-
-        for (Condition c : conditions) {
-            int index = schema.getAttributeIndex(c.getAttribute());
-            Object value = r.getAttributes().get(index).getRaw();
-
-            if (!value.equals(c.getValue())) {
-                return false;
-            }
-        }
-
-        return true;
-    }
 
     private void print_helper(Table t, SelectCommand s) throws DBException {
         Schema schema = t.schema();
@@ -291,12 +264,18 @@ public class SimpleDBEngine implements DBEngine {
         } else {
             for (String[] pair : s.getAttributeNames()) {
                 String attrName = pair[1];
+                int found = -1;
                 for (int i = 0; i < allAttrs.size(); i++) {
-                    if (allAttrs.get(i).getName().equalsIgnoreCase(attrName)) {
-                        colIndices.add(i);
+                    if (allAttrs.get(i).getName().equalsIgnoreCase(attrName) ||
+                            allAttrs.get(i).getName().endsWith("." + attrName)) {
+                        found = i;
                         break;
                     }
                 }
+                if (found == -1) {
+                    throw new DBException("No such attribute: " + attrName);
+                }
+                colIndices.add(found);
             }
         }
 
@@ -305,11 +284,9 @@ public class SimpleDBEngine implements DBEngine {
         for (int i = 0; i < colCount; i++)
             widths[i] = getColumnWidth(allAttrs.get(colIndices.get(i)));
 
-        // Build divider
         StringBuilder divider = new StringBuilder("+");
         for (int w : widths) divider.append("-".repeat(w + 2)).append("+");
 
-        // Print header
         System.out.println(divider);
         StringBuilder header = new StringBuilder("|");
         for (int i = 0; i < colCount; i++)
@@ -317,15 +294,21 @@ public class SimpleDBEngine implements DBEngine {
         System.out.println(header);
         System.out.println(divider);
 
-        // Single scan, print each record immediately
-        for (model.Record r : t.scan()) {
-            StringBuilder row = new StringBuilder("|");
-            for (int i = 0; i < colCount; i++) {
-                Value v = r.getAttributes().get(colIndices.get(i));
-                String cell = (v == null || v.getRaw() == null) ? "NULL" : v.getRaw().toString();
-                row.append(String.format(" %-" + widths[i] + "s |", cell));
+        // Stream page by page instead of scan()
+        if (!(t instanceof TableSchema ts)) {
+            throw new DBException("Unsupported table type");
+        }
+        for (int pid : ts.getPageIds()) {
+            Page p = buffer.getPage(pid);
+            for (Record r : p.getRecords()) {
+                StringBuilder row = new StringBuilder("|");
+                for (int i = 0; i < colCount; i++) {
+                    Value v = r.getAttributes().get(colIndices.get(i));
+                    String cell = (v == null || v.getRaw() == null) ? "NULL" : v.getRaw().toString();
+                    row.append(String.format(" %-" + widths[i] + "s |", cell));
+                }
+                System.out.println(row);
             }
-            System.out.println(row);
         }
         System.out.println(divider);
     }

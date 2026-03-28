@@ -260,29 +260,35 @@ public class ParserImplementation implements Parser
             }
 
             //parse where
-            String[] whereSplit = matcher.group("where").split(" ");
             IWhereTree whereTree;
-            try {
-                whereTree = IWhereTree.createWhereTree(whereSplit);
-            } catch (DBException e) {
-                throw new ParseException(e.getMessage());
-            }
+            if (matcher.group("where") != null) {
+                String[] whereSplit = matcher.group("where").split(" ");
 
+                try {
+                    whereTree = IWhereTree.createWhereTree(whereSplit);
+                } catch (DBException e) {
+                    throw new ParseException(e.getMessage());
+                }
+            }else{
+                whereTree = null;
+            }
             //parse orderBy
             String[] orderBy;
-            String orderByStr = matcher.group("orderBy").toLowerCase();
-            Matcher qMatcher = qualifiedPattern.matcher(orderByStr);
+            String hasob = matcher.group("orderBy");
+            if (hasob != null) {
+                String orderByStr = matcher.group("orderBy").toLowerCase();
+                Matcher qMatcher = qualifiedPattern.matcher(orderByStr);
 
-            if (orderByStr == null) {   //intellij says that this is always false, but that's not true, idk why its saying that, don't listen to its suggestion to remove the if statement
+                if (orderByStr == null) {   //intellij says that this is always false, but that's not true, idk why its saying that, don't listen to its suggestion to remove the if statement
+                    orderBy = null;
+                } else if (qMatcher.matches()) {
+                    orderBy = new String[]{qMatcher.group("table"), qMatcher.group("attribute")};
+                } else {
+                    orderBy = new String[]{null, orderByStr};
+                }
+            }else{
                 orderBy = null;
             }
-            else if (qMatcher.matches()) {
-                orderBy = new String[] {qMatcher.group("table"), qMatcher.group("attribute")};
-            }
-            else {
-                orderBy = new String[] {null, orderByStr};
-            }
-
             //turn the attribute list into an array
             Object[] attributeArrayAsObject = attributeNames.toArray();
             String[][] attributeNameArray = new String[attributeArrayAsObject.length][2];

@@ -183,4 +183,23 @@ public class TableSchema implements Table {
         }
         return result;
     }
+
+    public void append(Record record) throws DBException {
+        if (pageIds.isEmpty()) {
+            int pid = storage.allocatePage();
+            pageIds.add(pid);
+        }
+        int pid = pageIds.get(pageIds.size() - 1);
+        Page p = buffer.getPage(pid);
+        if (buffer.canFitRecord(p, record)) {
+            p.addRecord(record);
+            buffer.markDirty(pid);
+        } else {
+            int newPid = storage.allocatePage();
+            pageIds.add(newPid);
+            Page newPage = buffer.getPage(newPid);
+            newPage.addRecord(record);
+            buffer.markDirty(newPid);
+        }
+    }
 }
