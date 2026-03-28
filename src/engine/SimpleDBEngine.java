@@ -237,14 +237,48 @@ public class SimpleDBEngine implements DBEngine {
 
         for (int pid : ts.getPageIds()) {
             Page p = buffer.getPage(pid);
+            for (Record r : p.getRecords()) {
+                if (cmd.where(schema, r)) {
+                    Attribute attr = schema.getAttributes().get(attrIndex);
+                    if (attr.isPrimaryKey()) {
+                        Value newVal = new Value(cmd.getValue());
+                        // check uniqueness against all records
+                        if (attr.isPrimaryKey()) {
+                            // count how many rows will be updated
+                            int matchCount = 0;
+                            for (int checkPid : ts.getPageIds()) {
+                                Page checkPage = buffer.getPage(checkPid);
+                                for (Record checkRec : checkPage.getRecords()) {
+                                    if (cmd.where(schema, checkRec)) matchCount++;
+                                }
+                            }
+                            if (matchCount > 1) {
+                                return Result.error("Cannot set multiple rows to the same primary key value: " + cmd.getValue());
+                            }
+                            for (int checkPid : ts.getPageIds()) {
+                                Page checkPage = buffer.getPage(checkPid);
+                                for (Record checkRec : checkPage.getRecords()) {
+                                    if (checkRec == r) continue;
+                                    if (checkRec.getAttributes().get(attrIndex).getRaw().equals(newVal.getRaw())) {
+                                        return Result.error("Duplicate primary key value: " + newVal.getRaw());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
+        // all checks passed, now apply
+        for (int pid : ts.getPageIds()) {
+            Page p = buffer.getPage(pid);
             for (Record r : p.getRecords()) {
                 if (cmd.where(schema, r)) {
                     r.getAttributes().set(attrIndex, new Value(cmd.getValue()));
                     updated++;
                 }
             }
-
             buffer.markDirty(pid);
         }
 
