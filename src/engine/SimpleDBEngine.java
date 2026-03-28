@@ -260,7 +260,10 @@ public class SimpleDBEngine implements DBEngine {
         // Determine which column indices to print
         List<Integer> colIndices = new ArrayList<>();
         if (s == null || s.isSelectStar()) {
-            for (int i = 0; i < allAttrs.size(); i++) colIndices.add(i);
+            for (int i = 0; i < allAttrs.size(); i++) {
+                if (!allAttrs.get(i).getName().equals("__pk") && !allAttrs.get(i).getName().endsWith(".__pk"))
+                    colIndices.add(i);
+            }
         } else {
             for (String[] pair : s.getAttributeNames()) {
                 String attrName = pair[1];

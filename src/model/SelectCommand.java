@@ -159,33 +159,54 @@ public class SelectCommand extends ParsedCommand {
     private Table cartesianProduct(Table left, Table right, Catalog catalog,
                                    StorageManager storage, BufferManager buffer) throws DBException {
         List<Attribute> mergedAttrs = new ArrayList<>();
+
+        // Synthetic integer PK
+        mergedAttrs.add(new Attribute("__pk", false, true, Datatype.INTEGER, 4));
+
         for (Attribute a : left.schema().getAttributes()) {
-            mergedAttrs.add(new Attribute(
-                    left.name() + "." + a.getName(),
-                    false, false, a.getType(), a.getDataLength()
-            ));
+            if (a.getName().equals("__pk") || a.getName().endsWith(".__pk")) continue;
+            String qualifiedName = a.getName().contains(".") ? a.getName() : left.name() + "." + a.getName();
+            mergedAttrs.add(new Attribute(qualifiedName, false, false, a.getType(), a.getDataLength()));
         }
         for (Attribute a : right.schema().getAttributes()) {
-            mergedAttrs.add(new Attribute(
-                    right.name() + "." + a.getName(),
-                    false, false, a.getType(), a.getDataLength()
-            ));
+            if (a.getName().equals("__pk") || a.getName().endsWith(".__pk")) continue;
+            String qualifiedName = a.getName().contains(".") ? a.getName() : right.name() + "." + a.getName();
+            mergedAttrs.add(new Attribute(qualifiedName, false, false, a.getType(), a.getDataLength()));
         }
-
-        // Mark first attribute as PK to satisfy schema constraint
-        Attribute first = mergedAttrs.get(0);
-        mergedAttrs.set(0, new Attribute(first.getName(), false, true, first.getType(), first.getDataLength()));
 
         String tempName = "__temp_" + left.name() + "_" + right.name();
         TableSchema temp = new TableSchema(tempName, new Schema(mergedAttrs), storage, buffer, true);
         catalog.addTable(temp);
 
-        for (Record leftRec : left.scan()) {
-            for (Record rightRec : right.scan()) {
-                Record combined = new Record();
-                for (Value v : leftRec.getAttributes()) combined.addAttribute(v);
-                for (Value v : rightRec.getAttributes()) combined.addAttribute(v);
-                temp.insert(combined);
+        int pk = 0;
+        for (int lpid : ((TableSchema) left).getPageIds()) {
+            Page lPage = buffer.getPage(lpid);
+            for (Record leftRec : lPage.getRecords()) {
+
+                for (int rpid : ((TableSchema) right).getPageIds()) {
+                    Page rPage = buffer.getPage(rpid);
+                    for (Record rightRec : rPage.getRecords()) {
+
+                        Record combined = new Record();
+                        combined.addAttribute(new Value(pk++));
+
+                        List<Attribute> leftAttrs = left.schema().getAttributes();
+                        for (int i = 0; i < leftAttrs.size(); i++) {
+                            String name = leftAttrs.get(i).getName();
+                            if (name.equals("__pk") || name.endsWith(".__pk")) continue;
+                            combined.addAttribute(leftRec.getAttributes().get(i));
+                        }
+
+                        List<Attribute> rightAttrs = right.schema().getAttributes();
+                        for (int i = 0; i < rightAttrs.size(); i++) {
+                            String name = rightAttrs.get(i).getName();
+                            if (name.equals("__pk") || name.endsWith(".__pk")) continue;
+                            combined.addAttribute(rightRec.getAttributes().get(i));
+                        }
+
+                        temp.insert(combined);
+                    }
+                }
             }
         }
 
