@@ -232,30 +232,33 @@ public class ParserImplementation implements Parser
 
     private ParsedCommand parseSelect(String input) throws ParseException {
         Matcher matcher = Pattern.compile("SELECT (?<attributes>(?:(?:\\w+\\.)?\\w+, )*(?:\\w+\\.)?\\w+|\\*)" +
-                                          " FROM (?<tables>(?:\\w+, )*\\w+)" +
-                                          "(?: WHERE (?<where>(?:(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS NULL) )*" +
-                                                             "(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS NULL)))?" +
-                                          "(?: ORDERBY (?<orderBy>(?:\\w+\\.)?\\w+))?;").matcher(input);
+                " FROM (?<tables>(?:\\w+, )*\\w+)" +
+                "(?: WHERE (?<where>(?:(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS NULL) )*" +
+                "(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS NULL)))?" +
+                "(?: ORDERBY (?<orderBy>(?:\\w+\\.)?\\w+))?;").matcher(input);
 
         if (matcher.matches()) {
+            Pattern qualifiedPattern = Pattern.compile("(?<table>\\w+\\.)(?<attribute>\\w+)");
+
             //parse tableNames
             String[] tableNames = matcher.group("tables").toLowerCase().split(", ");
 
             //parse attributeNames
-            ArrayList<String[]> attributeNames = new ArrayList<>();
-            String[] attributesSplit = matcher.group("attributes").toLowerCase().split(", ");
-            Pattern qualifiedPattern = Pattern.compile("(?<table>\\w+\\.)(?<attribute>\\w+)");
+            ArrayList<String[]> attributeNames = null;
+            String attributesGroup = matcher.group("attributes").toLowerCase().trim();
 
-            for (String attribute : attributesSplit) {
-                Matcher qMatcher = qualifiedPattern.matcher(attribute);
+            if (!attributesGroup.equals("*")) {
+                attributeNames = new ArrayList<>();
+                String[] attributesSplit = attributesGroup.split(", ");
 
-                if (qMatcher.matches()) {
-                    String[] attributeArray = {qMatcher.group("table"),
-                                               qMatcher.group("attribute")};
-                    attributeNames.add(attributeArray);
-                }
-                else {
-                    attributeNames.add(new String[] {null, attribute});
+                for (String attribute : attributesSplit) {
+                    Matcher qMatcher = qualifiedPattern.matcher(attribute);
+
+                    if (qMatcher.matches()) {
+                        attributeNames.add(new String[]{qMatcher.group("table"), qMatcher.group("attribute")});
+                    } else {
+                        attributeNames.add(new String[]{null, attribute});
+                    }
                 }
             }
 
@@ -269,40 +272,38 @@ public class ParserImplementation implements Parser
                 } catch (DBException e) {
                     throw new ParseException(e.getMessage());
                 }
-            }else{
+            } else {
                 whereTree = null;
             }
+
             //parse orderBy
             String[] orderBy;
             String hasob = matcher.group("orderBy");
             if (hasob != null) {
-                String orderByStr = matcher.group("orderBy").toLowerCase();
+                String orderByStr = hasob.toLowerCase();
                 Matcher qMatcher = qualifiedPattern.matcher(orderByStr);
-
-                if (orderByStr == null) {   //intellij says that this is always false, but that's not true, idk why its saying that, don't listen to its suggestion to remove the if statement
+                if (orderByStr == null) {
                     orderBy = null;
-                } else if (qMatcher.matches()) {
+                }
+                else if (qMatcher.matches()) {
                     orderBy = new String[]{qMatcher.group("table"), qMatcher.group("attribute")};
                 } else {
                     orderBy = new String[]{null, orderByStr};
                 }
-            }else{
+            } else {
                 orderBy = null;
             }
-            //turn the attribute list into an array
-            Object[] attributeArrayAsObject = attributeNames.toArray();
-            String[][] attributeNameArray = new String[attributeArrayAsObject.length][2];
 
-            for (int i = 0; i < attributeArrayAsObject.length; i++) {
-                attributeNameArray[i] = (String[]) attributeArrayAsObject[i];
+            //turn the attribute list into an array (null if *)
+            String[][] attributeNameArray = null;
+            if (attributeNames != null) {
+                attributeNameArray = attributeNames.toArray(new String[0][]);
             }
 
             return new SelectCommand(tableNames, attributeNameArray, whereTree, orderBy);
-        }
-        else {
+        } else {
             throw new ParseException("Invalid command syntax.");
         }
-
     }
 
     //Currently only does "SELECT * FROM <tableName>;"
