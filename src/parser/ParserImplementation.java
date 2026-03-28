@@ -677,12 +677,15 @@ public class ParserImplementation implements Parser
 
         String tableName = matcher.group("tableName").toLowerCase();
 
-        String[] whereSplit = matcher.group("where").split(" ");
-        IWhereTree whereTree;
-        try {
-            whereTree = IWhereTree.createWhereTree(whereSplit);
-        } catch (DBException e) {
-            throw new ParseException(e.getMessage());
+        String whereStr = matcher.group("where");
+        IWhereTree whereTree = null;
+        if (whereStr != null) {
+            String[] whereSplit = whereStr.split(" ");
+            try {
+                whereTree = IWhereTree.createWhereTree(whereSplit);
+            } catch (DBException e) {
+                throw new ParseException(e.getMessage());
+            }
         }
 
         return new DeleteCommand(tableName, whereTree);
