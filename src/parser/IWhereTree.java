@@ -227,11 +227,11 @@ public interface IWhereTree {
             IOperandNode leftNode;
 
             //convert objects to nodes
-            if (value1 instanceof ValueNode) {
-                rightNode = (ValueNode) value1;
-                if (rightNode.getVal(null, null) != null) {
+            if (value1 instanceof ValueNode vn) {
+                if (vn.value.getRaw() != null) {
                     throw new ParseException("IS must be followed by NULL");
                 }
+                rightNode = vn;
             } else {
                 throw new ParseException("Invalid WHERE clause.");
             }

@@ -233,8 +233,8 @@ public class ParserImplementation implements Parser
     private ParsedCommand parseSelect(String input) throws ParseException {
         Matcher matcher = Pattern.compile("SELECT (?<attributes>(?:(?:\\w+\\.)?\\w+, )*(?:\\w+\\.)?\\w+|\\*)" +
                 " FROM (?<tables>(?:\\w+, )*\\w+)" +
-                "(?: WHERE (?<where>(?:(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS NULL) )*" +
-                "(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS NULL)))?" +
+                "(?: WHERE (?<where>(?:(?!ORDERBY )(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS NULL) )*" +
+                "(?!ORDERBY)(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS|NULL)))?" +
                 "(?: ORDERBY (?<orderBy>(?:\\w+\\.)?\\w+))?;").matcher(input);
 
         if (matcher.matches()) {
