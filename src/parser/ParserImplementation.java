@@ -1,6 +1,7 @@
 package parser;
 
 import model.*;
+import util.DBException;
 import util.ParseException;
 import java.util.ArrayList;
 import java.util.List;
@@ -35,6 +36,8 @@ public class ParserImplementation implements Parser
                 case "INSERT" -> parseInsert(input);
                 case "DROP" -> parseDrop(input);
                 case "ALTER" -> parseAlter(input);
+                case "DELETE" -> parseDelete(input);
+                case "UPDATE" -> parseUpdate(input);
                 default -> throw new ParseException("Invalid command");
             };
         }
@@ -51,8 +54,7 @@ public class ParserImplementation implements Parser
      * @return true if the string contains only alphanumeric characters;
      * false otherwise
      */
-    private boolean isAlphanumeric(String str)
-    {
+    private boolean isAlphanumeric(String str) {
         for (int i = 0; i < str.length(); i++)
         {
             if (!Character.isLetterOrDigit(str.charAt(i)))
@@ -64,8 +66,7 @@ public class ParserImplementation implements Parser
         return true;
     }
 
-    private ParsedCommand parseCreate(String input) throws ParseException
-    {
+    private ParsedCommand parseCreate(String input) throws ParseException {
 
         //Check for "CREATE TABLE <tableName> (<something>);
         Pattern pattern = Pattern.compile("CREATE TABLE (\\w+) *\\((.*)\\);");
@@ -231,65 +232,78 @@ public class ParserImplementation implements Parser
 
     private ParsedCommand parseSelect(String input) throws ParseException {
         Matcher matcher = Pattern.compile("SELECT (?<attributes>(?:(?:\\w+\\.)?\\w+, )*(?:\\w+\\.)?\\w+|\\*)" +
-                                          " FROM (?<tables>(?:\\w+, )*\\w+)" +
-                                          "(?: WHERE (?<where>(?:(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS NULL) )*" +
-                                                             "(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS NULL)))?" +
-                                          "(?: ORDERBY (?<orderBy>(?:\\w+\\.)?\\w+))?;").matcher(input);
+                " FROM (?<tables>(?:\\w+, )*\\w+)" +
+                "(?: WHERE (?<where>(?:(?!ORDERBY )(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS NULL) )*" +
+                "(?!ORDERBY)(?:(?:\\w+\\.)?\\w+|=|>|>=|<|<=|==|<>|AND|OR|IS|NULL)))?" +
+                "(?: ORDERBY (?<orderBy>(?:\\w+\\.)?\\w+))?;").matcher(input);
 
         if (matcher.matches()) {
-            //parse tableNames
-            String[] tableNames = matcher.group("tables").split(", ");
-
-            //parse attributeNames
-            ArrayList<String[]> attributeNames = new ArrayList<>();
-            String[] attributesSplit = matcher.group("attributes").split(", ");
             Pattern qualifiedPattern = Pattern.compile("(?<table>\\w+\\.)(?<attribute>\\w+)");
 
-            for (String attribute : attributesSplit) {
-                Matcher qMatcher = qualifiedPattern.matcher(attribute);
+            //parse tableNames
+            String[] tableNames = matcher.group("tables").toLowerCase().split(", ");
 
-                if (qMatcher.matches()) {
-                    String[] attributeArray = {qMatcher.group("table"), qMatcher.group("attribute")};
-                    attributeNames.add(attributeArray);
-                }
-                else {
-                    attributeNames.add(new String[] {null, attribute});
+            //parse attributeNames
+            ArrayList<String[]> attributeNames = null;
+            String attributesGroup = matcher.group("attributes").toLowerCase().trim();
+
+            if (!attributesGroup.equals("*")) {
+                attributeNames = new ArrayList<>();
+                String[] attributesSplit = attributesGroup.split(", ");
+
+                for (String attribute : attributesSplit) {
+                    Matcher qMatcher = qualifiedPattern.matcher(attribute);
+
+                    if (qMatcher.matches()) {
+                        attributeNames.add(new String[]{qMatcher.group("table"), qMatcher.group("attribute")});
+                    } else {
+                        attributeNames.add(new String[]{null, attribute});
+                    }
                 }
             }
 
             //parse where
-            String[] whereSplit = matcher.group("where").split(" ");
-            IWhereTree whereTree = IWhereTree.createWhereTree(whereSplit);
+            IWhereTree whereTree;
+            if (matcher.group("where") != null) {
+                String[] whereSplit = matcher.group("where").split(" ");
+
+                try {
+                    whereTree = IWhereTree.createWhereTree(whereSplit);
+                } catch (DBException e) {
+                    throw new ParseException(e.getMessage());
+                }
+            } else {
+                whereTree = null;
+            }
 
             //parse orderBy
             String[] orderBy;
-            String orderByStr = matcher.group("orderBy");
-            Matcher qMatcher = qualifiedPattern.matcher(orderByStr);
-
-            if (orderByStr == null) {   //intellij says that this is always false, but that's not true, idk why its saying that, don't listen to its suggestion to remove the if statement
+            String hasob = matcher.group("orderBy");
+            if (hasob != null) {
+                String orderByStr = hasob.toLowerCase();
+                Matcher qMatcher = qualifiedPattern.matcher(orderByStr);
+                if (orderByStr == null) {
+                    orderBy = null;
+                }
+                else if (qMatcher.matches()) {
+                    orderBy = new String[]{qMatcher.group("table"), qMatcher.group("attribute")};
+                } else {
+                    orderBy = new String[]{null, orderByStr};
+                }
+            } else {
                 orderBy = null;
             }
-            else if (qMatcher.matches()) {
-                orderBy = new String[] {qMatcher.group("table"), qMatcher.group("attribute")};
-            }
-            else {
-                orderBy = new String[] {null, orderByStr};
-            }
 
-            //turn the attribute list into an array
-            Object[] attributeArrayAsObject = attributeNames.toArray();
-            String[][] attributeNameArray = new String[attributeArrayAsObject.length][2];
-
-            for (int i = 0; i < attributeArrayAsObject.length; i++) {
-                attributeNameArray[i] = (String[]) attributeArrayAsObject[i];
+            //turn the attribute list into an array (null if *)
+            String[][] attributeNameArray = null;
+            if (attributeNames != null) {
+                attributeNameArray = attributeNames.toArray(new String[0][]);
             }
 
             return new SelectCommand(tableNames, attributeNameArray, whereTree, orderBy);
-        }
-        else {
+        } else {
             throw new ParseException("Invalid command syntax.");
         }
-
     }
 
     //Currently only does "SELECT * FROM <tableName>;"
@@ -316,7 +330,8 @@ public class ParserImplementation implements Parser
             throw new ParseException("Invalid command syntax.");
         }
 
-        return new SimpleSelectCommand(tableName);
+        String[] names = {tableName};
+        return new SelectCommand(names);
     }
 
     private ParsedCommand parseInsert(String input) throws ParseException {
@@ -649,6 +664,66 @@ public class ParserImplementation implements Parser
 
         return new AlterTableDropCommand(tableName, attributeName);
 
+    }
+
+    private ParsedCommand parseDelete(String input) throws ParseException {
+
+        Pattern pattern = Pattern.compile("DELETE FROM (?<tableName>\\w+)(?: WHERE (?<where>.*))?;");
+        Matcher matcher = pattern.matcher(input);
+
+        if (!matcher.matches()) {
+            throw new ParseException("Invalid DELETE syntax");
+        }
+
+        String tableName = matcher.group("tableName").toLowerCase();
+
+        String whereStr = matcher.group("where");
+        IWhereTree whereTree = null;
+        if (whereStr != null) {
+            String[] whereSplit = whereStr.split(" ");
+            try {
+                whereTree = IWhereTree.createWhereTree(whereSplit);
+            } catch (DBException e) {
+                throw new ParseException(e.getMessage());
+            }
+        }
+
+        return new DeleteCommand(tableName, whereTree);
+    }
+
+    private ParsedCommand parseUpdate(String input) throws ParseException {
+
+        Pattern pattern = Pattern.compile(
+                "UPDATE (?<tableName>\\w+) SET (?<attributeName>\\w+) *= *(?<value>\\w+)" +
+                       "(?: WHERE (?<where>.*))?;"
+        );
+        Matcher matcher = pattern.matcher(input);
+
+        if (!matcher.matches()) {
+            throw new ParseException("Invalid UPDATE syntax");
+        }
+
+        String tableName = matcher.group("tableName").toLowerCase();
+        String attr = matcher.group("attributeName");
+        String valueStr = matcher.group("value");
+        String whereStr = matcher.group("where");
+
+        Object value;
+        try {
+            value = Integer.parseInt(valueStr);
+        } catch (Exception e) {
+            value = valueStr;
+        }
+
+        String[] whereSplit = whereStr.split(" ");
+        IWhereTree whereTree;
+        try {
+            whereTree = IWhereTree.createWhereTree(whereSplit);
+        } catch (DBException e) {
+            throw new ParseException(e.getMessage());
+        }
+
+        return new UpdateCommand(tableName, attr, value, whereTree);
     }
 
 }

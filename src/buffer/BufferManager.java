@@ -289,4 +289,21 @@ public class BufferManager{
         }
         return rec;
     }
+
+    public int recordSizeBytes(Record rec) {
+        return serializeRecord(rec).length;
+    }
+
+    public boolean canFitRecord(Page page, Record newRec) {
+        int k = page.getRecords().size();
+        int headerAfter = 4 + 4 * (k + 1); // numRecords + offsets
+
+        int dataBytes = 0;
+        for (Record r : page.getRecords()) {
+            dataBytes += serializeRecord(r).length;
+        }
+        dataBytes += serializeRecord(newRec).length;
+
+        return headerAfter + dataBytes <= pageSize;
+    }
 }

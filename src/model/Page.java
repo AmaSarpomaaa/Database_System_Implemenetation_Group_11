@@ -15,10 +15,21 @@ public class Page {
         records.add(r);
     }
 
+    public void addRecordAt(int index, Record r) {
+        records.add(index, r);
+    }
+
+    public Record removeRecordAt(int index) {
+        return records.remove(index);
+    }
+
     public ArrayList<Record> getRecords(){
         return records;
     }
 
+    public int size(){
+        return records.size();
+    }
     public int getPageID() {
         return pageID;
     }
