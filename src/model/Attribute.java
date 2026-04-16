@@ -14,14 +14,47 @@ public class Attribute {
      */
     private int dataLength;
 
+    /**
+     * Don't use this constructor. It's deprecated
+     * Sets unique equal to the primKey value.
+     * Automatically sets the Attribute to not have a dataLength regardless of the type
+     * Equivalent to Attribute(na, nn, primKey, primKey, typ, -1)
+     * @deprecated
+     * @param na The name of the attribute.
+     * @param nn true if the attribute has a not null constraint, false otherwise
+     * @param primKey true if the attribute is a primaryKey, false otherwise
+     *                The unique constraint is also set to the same value
+     * @param typ The datatype of the attribute
+     */
+    @Deprecated
     public Attribute(String na, boolean nn, boolean primKey, Datatype typ){
         this(na, nn, primKey, primKey, typ, -1);
     }
 
+    /**
+     * Sets unique equal to the primKey value.
+     * Equivalent to Attribute(na, nn, primKey, primKey, typ, dataLen)
+     * @param na The name of the attribute.
+     * @param nn true if the attribute has a not null constraint, false otherwise
+     * @param primKey true if the attribute is a primaryKey, false otherwise
+     *                The unique constraint is also set to the same value
+     * @param typ The dataType of the attribute
+     * @param dataLen The length of the dataType if the attribute is a CHAR or VARCHAR dataType.
+     *                Ignored if typ is not CHAR or VARCHAR.
+     */
     public Attribute(String na, boolean nn, boolean primKey, Datatype typ, int dataLen){
         this(na, nn, primKey, primKey, typ, dataLen);
     }
 
+    /**
+     * @param na The name of the attribute.
+     * @param nn true if the attribute has a NOTNULL constraint, false otherwise
+     * @param primKey true if the attribute is a PRIMARYKEY, false otherwise
+     * @param uniq true if the attribute has a UNIQUE constraint, false otherwise
+     * @param typ The dataType of the attribute
+     * @param dataLen The length of the dataType if the attribute is a CHAR or VARCHAR dataType.
+     *                Ignored if typ is not CHAR or VARCHAR.
+     */
     public Attribute(String na, boolean nn, boolean primKey, boolean uniq, Datatype typ, int dataLen){
         name = na;
         not_null = nn;
