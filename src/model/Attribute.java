@@ -22,7 +22,7 @@ public class Attribute {
         this(na, nn, primKey, primKey, typ, dataLen);
     }
 
-    public Attribute(String na, boolean nn, boolean uniq, boolean primKey, Datatype typ, int dataLen){
+    public Attribute(String na, boolean nn, boolean primKey, boolean uniq, Datatype typ, int dataLen){
         name = na;
         not_null = nn;
         type = typ;
