@@ -5,6 +5,7 @@ public class Attribute {
     String name;
     boolean not_null;
     boolean unique;
+    boolean primaryKey;
     Datatype type;
     /**
      * The length of the dataType if the data is of a type that has a length.
@@ -13,15 +14,29 @@ public class Attribute {
      */
     private int dataLength;
 
-    public Attribute(String na, boolean nn, boolean uniq, Datatype typ){
-        this(na, nn, uniq, typ, -1);
+    public Attribute(String na, boolean nn, boolean primKey, Datatype typ){
+        this(na, nn, primKey, primKey, typ, -1);
     }
 
-    public Attribute(String na, boolean nn, boolean uniq, Datatype typ, int dataLen){
+    public Attribute(String na, boolean nn, boolean primKey, Datatype typ, int dataLen){
+        this(na, nn, primKey, primKey, typ, dataLen);
+    }
+
+    public Attribute(String na, boolean nn, boolean uniq, boolean primKey, Datatype typ, int dataLen){
         name = na;
         not_null = nn;
-        unique = uniq;
         type = typ;
+
+        if (primKey && !uniq) {
+            //primary keys are always unique
+            primaryKey = true;
+            unique = true;
+        }
+        else {
+            primaryKey = primKey;
+            unique = uniq;
+        }
+
         setDataLength(dataLen);
     }
 
@@ -51,7 +66,12 @@ public class Attribute {
 
     public String getName() { return name; }
     public boolean isNotNull() { return not_null; }
-    public boolean isPrimaryKey() { return unique; }
+
+    public boolean isUnique() {
+        return unique;
+    }
+
+    public boolean isPrimaryKey() { return primaryKey; }
     public Datatype getType() { return type; }
 
     public void setUnique(boolean u){
