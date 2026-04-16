@@ -17,7 +17,7 @@ public class Schema {
      */
     public Attribute getPrimaryKey() {
         for (Attribute attr : attributeList) {
-            if (attr.unique) {  // unique field represents PRIMARYKEY
+            if (attr.isPrimaryKey()) {  // unique field represents PRIMARYKEY
                 return attr;
             }
         }
