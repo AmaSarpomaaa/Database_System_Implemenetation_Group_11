@@ -110,4 +110,11 @@ public class Attribute {
     public void setUnique(boolean u){
         unique = u;
     }
+
+    public void setPrimaryKey(boolean primaryKey){
+        this.primaryKey = primaryKey;
+        if (primaryKey) {
+            this.unique = true;
+        }
+    }
 }
