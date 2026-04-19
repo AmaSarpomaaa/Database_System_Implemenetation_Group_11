@@ -692,10 +692,9 @@ public class ParserImplementation implements Parser
     }
 
     private ParsedCommand parseUpdate(String input) throws ParseException {
-
         Pattern pattern = Pattern.compile(
-                "UPDATE (?<tableName>\\w+) SET (?<attributeName>\\w+) *= *(?<value>\\w+)" +
-                       "(?: WHERE (?<where>.*))?;"
+                "UPDATE (?<tableName>\\w+) SET (?<attr>\\w+) *= *(?<value>.+?)" +
+                        "(?: WHERE (?<where>.+))?;"
         );
         Matcher matcher = pattern.matcher(input);
 
@@ -704,23 +703,34 @@ public class ParserImplementation implements Parser
         }
 
         String tableName = matcher.group("tableName").toLowerCase();
-        String attr = matcher.group("attributeName");
-        String valueStr = matcher.group("value");
-        String whereStr = matcher.group("where");
+        String attr = matcher.group("attr").toLowerCase();
+        String valueStr = matcher.group("value").trim();
 
         Object value;
-        try {
-            value = Integer.parseInt(valueStr);
-        } catch (Exception e) {
-            value = valueStr;
+        if (valueStr.equalsIgnoreCase("NULL")) {
+            value = null;
+        } else if (valueStr.startsWith("'") && valueStr.endsWith("'")) {
+            value = valueStr.substring(1, valueStr.length() - 1);
+        } else {
+            try {
+                value = Integer.parseInt(valueStr);
+            } catch (NumberFormatException ignored) {
+                try {
+                    value = Double.parseDouble(valueStr);
+                } catch (NumberFormatException ignored2) {
+                    value = valueStr;
+                }
+            }
         }
 
-        String[] whereSplit = whereStr.split(" ");
-        IWhereTree whereTree;
-        try {
-            whereTree = IWhereTree.createWhereTree(whereSplit);
-        } catch (DBException e) {
-            throw new ParseException(e.getMessage());
+        IWhereTree whereTree = null;
+        String whereStr = matcher.group("where");
+        if (whereStr != null) {
+            try {
+                whereTree = IWhereTree.createWhereTree(whereStr.split(" "));
+            } catch (DBException e) {
+                throw new ParseException(e.getMessage());
+            }
         }
 
         return new UpdateCommand(tableName, attr, value, whereTree);

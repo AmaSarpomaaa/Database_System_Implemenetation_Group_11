@@ -13,9 +13,7 @@ import ddl.DDLParser;
 import model.*;
 import util.ParseException;
 
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.List;
+import java.util.*;
 
 public class SimpleDBEngine implements DBEngine {
 
@@ -233,35 +231,31 @@ public class SimpleDBEngine implements DBEngine {
 
         Schema schema = ts.schema();
         int attrIndex = schema.getAttributeIndex(cmd.getAttribute());
-        int updated = 0;
+        Attribute attr = schema.getAttributes().get(attrIndex);
 
-        for (int pid : ts.getPageIds()) {
-            Page p = buffer.getPage(pid);
-            for (Record r : p.getRecords()) {
-                if (cmd.where(schema, r)) {
-                    Attribute attr = schema.getAttributes().get(attrIndex);
-                    if (attr.isPrimaryKey()) {
-                        Value newVal = new Value(cmd.getValue());
-                        // check uniqueness against all records
-                        if (attr.isPrimaryKey()) {
-                            // count how many rows will be updated
-                            int matchCount = 0;
-                            for (int checkPid : ts.getPageIds()) {
-                                Page checkPage = buffer.getPage(checkPid);
-                                for (Record checkRec : checkPage.getRecords()) {
-                                    if (cmd.where(schema, checkRec)) matchCount++;
+        if (attr.isPrimaryKey()) {
+            for (int pid : ts.getPageIds()) {
+                Page p = buffer.getPage(pid);
+                for (Record r : p.getRecords()) {
+                    if (!cmd.where(schema, r)) continue;
+                    Object newVal = evaluateValue(cmd.getValue(), schema, r);
+
+                    // Check new value doesn't collide with any non-updated row
+                    for (int checkPid : ts.getPageIds()) {
+                        Page checkPage = buffer.getPage(checkPid);
+                        for (Record checkRec : checkPage.getRecords()) {
+                            if (checkRec == r) continue;
+                            if (cmd.where(schema, checkRec)) {
+                                // Another updated row — check it won't evaluate to the same value
+                                Object otherNewVal = evaluateValue(cmd.getValue(), schema, checkRec);
+                                if (newVal.equals(otherNewVal)) {
+                                    return Result.error("UPDATE would produce duplicate primary key value: " + newVal);
                                 }
-                            }
-                            if (matchCount > 1) {
-                                return Result.error("Cannot set multiple rows to the same primary key value: " + cmd.getValue());
-                            }
-                            for (int checkPid : ts.getPageIds()) {
-                                Page checkPage = buffer.getPage(checkPid);
-                                for (Record checkRec : checkPage.getRecords()) {
-                                    if (checkRec == r) continue;
-                                    if (checkRec.getAttributes().get(attrIndex).getRaw().equals(newVal.getRaw())) {
-                                        return Result.error("Duplicate primary key value: " + newVal.getRaw());
-                                    }
+                            } else {
+                                // Non-updated row — check existing value doesn't clash
+                                Object existing = checkRec.getAttributes().get(attrIndex).getRaw();
+                                if (newVal.equals(existing)) {
+                                    return Result.error("Duplicate primary key value: " + newVal);
                                 }
                             }
                         }
@@ -270,12 +264,13 @@ public class SimpleDBEngine implements DBEngine {
             }
         }
 
-        // all checks passed, now apply
+        // All checks passed, now apply
+        int updated = 0;
         for (int pid : ts.getPageIds()) {
             Page p = buffer.getPage(pid);
             for (Record r : p.getRecords()) {
                 if (cmd.where(schema, r)) {
-                    r.getAttributes().set(attrIndex, new Value(cmd.getValue()));
+                    r.getAttributes().set(attrIndex, new Value(evaluateValue(cmd.getValue(), schema, r)));
                     updated++;
                 }
             }
@@ -370,5 +365,60 @@ public class SimpleDBEngine implements DBEngine {
                 typeWidth = 10;
         }
         return Math.max(name.length(), typeWidth);
+    }
+
+    private Object evaluateValue(Object rawValue, Schema schema, Record record) throws DBException {
+        if (!(rawValue instanceof String expr)) {
+            return rawValue; // already a typed literal (Integer, Double, null)
+        }
+
+        // Check if it's a plain attribute name
+        int idx = schema.getAttributeIndex(expr);
+        if (idx >= 0) {
+            return record.getAttributes().get(idx).getRaw();
+        }
+
+        // Try to evaluate as a math expression: <operand> <op> <operand>
+        // operand can be an attribute name or a numeric literal
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("([\\w.]+)\\s*([+\\-*/])\\s*([\\w.]+)")
+                .matcher(expr);
+
+        if (m.matches()) {
+            double left  = resolveNumeric(m.group(1), schema, record);
+            double right = resolveNumeric(m.group(3), schema, record);
+            double result = switch (m.group(2)) {
+                case "+" -> left + right;
+                case "-" -> left - right;
+                case "*" -> left * right;
+                case "/" -> {
+                    if (right == 0) throw new DBException("Division by zero");
+                    yield left / right;
+                }
+                default -> throw new DBException("Unknown operator: " + m.group(2));
+            };
+            if (result == Math.floor(result) && !Double.isInfinite(result)) {
+                return (int) result;
+            }
+            return result;
+        }
+
+        // Plain string literal fallback
+        return expr;
+    }
+
+    private double resolveNumeric(String token, Schema schema, Record record) throws DBException {
+        int idx = schema.getAttributeIndex(token);
+        if (idx >= 0) {
+            Object val = record.getAttributes().get(idx).getRaw();
+            if (val instanceof Number n) return n.doubleValue();
+            throw new DBException("Attribute " + token + " is not numeric");
+        }
+
+        try {
+            return Double.parseDouble(token);
+        } catch (NumberFormatException e) {
+            throw new DBException("Cannot resolve numeric value: " + token);
+        }
     }
 }
