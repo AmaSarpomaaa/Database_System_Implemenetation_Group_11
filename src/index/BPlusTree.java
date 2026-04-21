@@ -1,121 +1,324 @@
 package index;
 
+import buffer.BufferManager;
+import storage.StorageManager;
+import util.DBException;
+
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Stack;
+
 public class BPlusTree {
-    private Node root;
+    // Constants
+    private static final byte INTERNAL  = 0;
+    private static final byte LEAF      = 1;
+    private static final int  NO_PAGE   = -1;
+
+    private static final byte TYPE_INT  = 1;
+    private static final byte TYPE_DBL  = 2;
+    private static final byte TYPE_STR  = 3;
+    private static final byte TYPE_BOOL = 4;
+
+    // Fields
+    private int rootPageId;
     private final int maxKeys;
+    private final StorageManager storage;
+    private final BufferManager  buffer;
 
-    public BPlusTree(int maxKeys) {
-        this.maxKeys = maxKeys;
-        this.root = new LeafNode(maxKeys);
+
+    // Construction
+    /**
+     * Allocates one empty leaf page as the root.
+     * Immediately call getRootPageId() and save the value in the catalog.
+     */
+    public BPlusTree(int maxKeys, StorageManager storage, BufferManager buffer)
+            throws DBException {
+        this.maxKeys  = maxKeys;
+        this.storage  = storage;
+        this.buffer   = buffer;
+        this.rootPageId = storage.allocatePage();
+        writeNode(rootPageId, new NodeContent(LEAF, NO_PAGE));
     }
 
-    public Node getRoot() {
-        return root;
+    /**
+     * Pass the rootPageId that was saved in the catalog
+     */
+    public BPlusTree(int rootPageId, int maxKeys,
+                     StorageManager storage, BufferManager buffer) {
+        this.rootPageId = rootPageId;
+        this.maxKeys    = maxKeys;
+        this.storage    = storage;
+        this.buffer     = buffer;
     }
 
-    public LeafNode findLeaf(Comparable<Object> key) {
-        Node current = root;
+    public int getRootPageId() { return rootPageId; }
 
-        while (current instanceof InternalNode internal) {
+    public void insert(Comparable<Object> key, int dataPageId) throws DBException {
+        Stack<Integer> path = new Stack<>();
+        int leafId          = findLeafPageId(key, path);
+        NodeContent leaf    = readNode(leafId);
+
+        // Insert into sorted position in the leaf
+        int i = 0;
+        while (i < leaf.keys.size() && leaf.keys.get(i).compareTo(key) < 0) i++;
+        leaf.keys.add(i, key);
+        leaf.pointers.add(i, dataPageId);
+
+        if (leaf.keys.size() > maxKeys) {
+            splitLeaf(leafId, leaf, path);
+        } else {
+            writeNode(leafId, leaf);
+        }
+    }
+
+    public int search(Comparable<Object> key) throws DBException {
+        int leafId       = findLeafPageId(key, null);
+        NodeContent leaf = readNode(leafId);
+        for (int i = 0; i < leaf.keys.size(); i++) {
+            if (leaf.keys.get(i).compareTo(key) == 0) {
+                return leaf.pointers.get(i);
+            }
+        }
+        return NO_PAGE;
+    }
+
+    public boolean delete(Comparable<Object> key) throws DBException {
+        int leafId       = findLeafPageId(key, null);
+        NodeContent leaf = readNode(leafId);
+        for (int i = 0; i < leaf.keys.size(); i++) {
+            if (leaf.keys.get(i).compareTo(key) == 0) {
+                leaf.keys.remove(i);
+                leaf.pointers.remove(i);
+                writeNode(leafId, leaf);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public List<Integer> rangeSearch(Comparable<Object> lo,
+                                     Comparable<Object> hi) throws DBException {
+        List<Integer> results = new ArrayList<>();
+        // Start from leftmost leaf if no lower bound
+        int curId = (lo == null) ? leftmostLeafId() : findLeafPageId(lo, null);
+
+        while (curId != NO_PAGE) {
+            NodeContent leaf = readNode(curId);
+            for (int i = 0; i < leaf.keys.size(); i++) {
+                Comparable<Object> k = leaf.keys.get(i);
+                if (lo != null && k.compareTo(lo) < 0) continue;
+                if (hi != null && k.compareTo(hi) > 0)  return results;
+                results.add(leaf.pointers.get(i));
+            }
+            curId = leaf.nextPageId;
+        }
+        return results;
+    }
+
+    private int findLeafPageId(Comparable<Object> key,
+                               Stack<Integer> path) throws DBException {
+        int curId = rootPageId;
+        while (true) {
+            NodeContent node = readNode(curId);
+            if (node.type == LEAF) return curId;
+
+            if (path != null) path.push(curId);
+
             int i = 0;
-            while (i < internal.getKeys().size()
-                    && key.compareTo(internal.getKeys().get(i)) >= 0) {
-                i++;
-            }
-            current = internal.getChildren().get(i);
-        }
-
-        return (LeafNode) current;
-    }
-
-    public Object search(Comparable<Object> key) {
-        LeafNode leaf = findLeaf(key);
-
-        for (int i = 0; i < leaf.getKeys().size(); i++) {
-            if (leaf.getKeys().get(i).compareTo(key) == 0) {
-                return leaf.getPointers().get(i);
-            }
-        }
-
-        return null;
-    }
-
-    public void insert(Comparable<Object> key, Object pointer) {
-        LeafNode leaf = findLeaf(key);
-        leaf.insertSorted(key, pointer);
-
-        if (leaf.isFull()) {
-            splitLeaf(leaf);
+            while (i < node.keys.size() && key.compareTo(node.keys.get(i)) >= 0) i++;
+            curId = node.pointers.get(i);
         }
     }
 
-    private void splitLeaf(LeafNode leaf) {
-        LeafNode newLeaf = new LeafNode(maxKeys);
+    private int leftmostLeafId() throws DBException {
+        int curId = rootPageId;
+        while (true) {
+            NodeContent node = readNode(curId);
+            if (node.type == LEAF) return curId;
+            curId = node.pointers.get(0);
+        }
+    }
 
-        int mid = leaf.getKeys().size() / 2;
+    private void splitLeaf(int leafId, NodeContent leaf,
+                           Stack<Integer> path) throws DBException {
+        int mid = leaf.keys.size() / 2;
 
-        while (leaf.getKeys().size() > mid) {
-            newLeaf.getKeys().add(leaf.getKeys().remove(mid));
-            newLeaf.getPointers().add(leaf.getPointers().remove(mid));
+        // Move the right half into a brand-new leaf
+        NodeContent newLeaf = new NodeContent(LEAF, leaf.nextPageId);
+        while (leaf.keys.size() > mid) {
+            newLeaf.keys.add(0, leaf.keys.remove(mid));
+            newLeaf.pointers.add(0, leaf.pointers.remove(mid));
         }
 
-        newLeaf.setNext(leaf.getNext());
-        leaf.setNext(newLeaf);
+        int newLeafId      = storage.allocatePage();
+        leaf.nextPageId    = newLeafId;
 
-        Comparable<Object> promotedKey = newLeaf.getKeys().get(0);
+        writeNode(leafId,   leaf);
+        writeNode(newLeafId, newLeaf);
 
-        if (leaf.getParent() == null) {
-            InternalNode newRoot = new InternalNode(maxKeys);
-            newRoot.getKeys().add(promotedKey);
-            newRoot.getChildren().add(leaf);
-            newRoot.getChildren().add(newLeaf);
+        // Promote the first key of the new leaf up to the parent
+        promote(newLeaf.keys.get(0), newLeafId, path);
+    }
 
-            leaf.setParent(newRoot);
-            newLeaf.setParent(newRoot);
-            root = newRoot;
+    private void splitInternal(int nodeId, NodeContent node,
+                               Stack<Integer> path) throws DBException {
+        int mid = node.keys.size() / 2;
+        Comparable<Object> promotedKey = node.keys.get(mid);
+
+        // Right half into a new internal node
+        NodeContent newNode = new NodeContent(INTERNAL, NO_PAGE);
+        while (node.keys.size() > mid + 1) {
+            newNode.keys.add(0, node.keys.remove(mid + 1));
+        }
+        node.keys.remove(mid);
+        while (node.pointers.size() > mid + 1) {
+            newNode.pointers.add(0, node.pointers.remove(mid + 1));
+        }
+
+        int newNodeId = storage.allocatePage();
+        writeNode(nodeId,   node);
+        writeNode(newNodeId, newNode);
+
+        promote(promotedKey, newNodeId, path);
+    }
+
+    private void promote(Comparable<Object> promotedKey, int rightChildId,
+                         Stack<Integer> path) throws DBException {
+        if (path.isEmpty()) {
+            // build a new root above it
+            int newRootId      = storage.allocatePage();
+            NodeContent newRoot = new NodeContent(INTERNAL, NO_PAGE);
+            newRoot.keys.add(promotedKey);
+
+            // Left child is old root, right child is the new split node
+            newRoot.pointers.add(rootPageId);
+            newRoot.pointers.add(rightChildId);
+            writeNode(newRootId, newRoot);
+            rootPageId = newRootId;
+            return;
+        }
+
+        int parentId         = path.pop();
+        NodeContent parent   = readNode(parentId);
+
+        // Insert promoted key and right child into parent in sorted order
+        int i = 0;
+        while (i < parent.keys.size()
+                && promotedKey.compareTo(parent.keys.get(i)) > 0) i++;
+        parent.keys.add(i, promotedKey);
+        parent.pointers.add(i + 1, rightChildId);
+
+        if (parent.keys.size() > maxKeys) {
+            splitInternal(parentId, parent, path);
         } else {
-            insertIntoParent(leaf.getParent(), promotedKey, newLeaf);
+            writeNode(parentId, parent);
         }
     }
 
-    private void insertIntoParent(InternalNode parent, Comparable<Object> key, Node rightChild) {
-        parent.insertChild(key, rightChild);
-
-        if (parent.isFull()) {
-            splitInternal(parent);
-        }
+    /**
+     * Reads a node page from disk.
+     */
+    private NodeContent readNode(int pageId) throws DBException {
+        buffer.getPage(pageId);                       // keep LRU accurate
+        byte[] data = storage.readPageBytes(pageId);  // raw bytes, our format
+        return deserialize(data);
     }
 
-    private void splitInternal(InternalNode node) {
-        InternalNode newInternal = new InternalNode(maxKeys);
+    /**
+     * Writes a node page to disk and marks it
+     */
+    private void writeNode(int pageId, NodeContent node) throws DBException {
+        byte[] data = serialize(node);
+        storage.writePageBytes(pageId, data);
+        buffer.markDirty(pageId);
+    }
 
-        int midIndex = node.getKeys().size() / 2;
-        Comparable<Object> promotedKey = node.getKeys().get(midIndex);
+    /**
+     * Serializes a node into bytes
+     */
+    private byte[] serialize(NodeContent node) {
+        byte[] data = new byte[storage.getPageSize()];
+        ByteBuffer buf = ByteBuffer.wrap(data);
 
-        while (node.getKeys().size() > midIndex + 1) {
-            newInternal.getKeys().add(node.getKeys().remove(midIndex + 1));
-        }
+        buf.put(node.type);
+        buf.putInt(node.nextPageId);
+        buf.putInt(node.keys.size());
 
-        node.getKeys().remove(midIndex);
+        for (Comparable<Object> key : node.keys) writeKey(buf, key);
 
-        while (node.getChildren().size() > midIndex + 1) {
-            Node child = node.getChildren().remove(midIndex + 1);
-            newInternal.getChildren().add(child);
-            child.setParent(newInternal);
-        }
+        for (int ptr : node.pointers) buf.putInt(ptr);
 
-        if (node.getParent() == null) {
-            InternalNode newRoot = new InternalNode(maxKeys);
-            newRoot.getKeys().add(promotedKey);
-            newRoot.getChildren().add(node);
-            newRoot.getChildren().add(newInternal);
+        return data;
+    }
 
-            node.setParent(newRoot);
-            newInternal.setParent(newRoot);
-            root = newRoot;
+    private NodeContent deserialize(byte[] data) {
+        ByteBuffer buf      = ByteBuffer.wrap(data);
+        byte type           = buf.get();
+        int  nextPageId     = buf.getInt();
+        int  keyCount       = buf.getInt();
+
+        NodeContent node = new NodeContent(type, nextPageId);
+
+        for (int i = 0; i < keyCount; i++) node.keys.add(readKey(buf));
+
+        int ptrCount = (type == LEAF) ? keyCount : keyCount + 1;
+        for (int i = 0; i < ptrCount; i++) node.pointers.add(buf.getInt());
+
+        return node;
+    }
+
+    private void writeKey(ByteBuffer buf, Comparable<Object> key) {
+        Object raw = key;
+        if (raw instanceof Integer) {
+            buf.put(TYPE_INT);
+            buf.putInt((Integer) raw);
+        } else if (raw instanceof Double) {
+            buf.put(TYPE_DBL);
+            buf.putDouble((Double) raw);
+        } else if (raw instanceof String) {
+            String s = (String) raw;
+            buf.put(TYPE_STR);
+            buf.putInt(s.length());
+            for (int i = 0; i < s.length(); i++) buf.put((byte) s.charAt(i));
+        } else if (raw instanceof Boolean) {
+            buf.put(TYPE_BOOL);
+            buf.put((byte) (((Boolean) raw) ? 1 : 0));
         } else {
-            newInternal.setParent(node.getParent());
-            insertIntoParent(node.getParent(), promotedKey, newInternal);
+            // store as string
+            String s = raw == null ? "" : raw.toString();
+            buf.put(TYPE_STR);
+            buf.putInt(s.length());
+            for (int i = 0; i < s.length(); i++) buf.put((byte) s.charAt(i));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Comparable<Object> readKey(ByteBuffer buf) {
+        byte type = buf.get();
+        switch (type) {
+            case TYPE_INT:  return (Comparable<Object>) (Object) buf.getInt();
+            case TYPE_DBL:  return (Comparable<Object>) (Object) buf.getDouble();
+            case TYPE_STR: {
+                int len    = buf.getInt();
+                byte[] bytes = new byte[len];
+                buf.get(bytes);
+                return (Comparable<Object>) (Object) new String(bytes);
+            }
+            case TYPE_BOOL: return (Comparable<Object>) (Object) (buf.get() == 1);
+            default: throw new IllegalStateException("Unknown key type byte: " + type);
+        }
+    }
+
+    private static class NodeContent {
+        byte type;
+        int  nextPageId;  // leaf-chain link for leaves; unused (-1) for internal
+        final List<Comparable<Object>> keys     = new ArrayList<>();
+        final List<Integer>            pointers = new ArrayList<>();
+
+        NodeContent(byte type, int nextPageId) {
+            this.type       = type;
+            this.nextPageId = nextPageId;
         }
     }
 }
