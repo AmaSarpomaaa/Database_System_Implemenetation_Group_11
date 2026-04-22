@@ -118,4 +118,15 @@ public class BPlusTree {
             insertIntoParent(node.getParent(), promotedKey, newInternal);
         }
     }
+
+    public void delete(Comparable<Object> key) {
+        LeafNode curLeaf = findLeaf(key);
+        for (int i = 0; i < curLeaf.getKeys().size(); i++) {
+            if (curLeaf.getKeys().get(i).compareTo(key) == 0) {
+                curLeaf.getKeys().remove(i);
+                curLeaf.getPointers().remove(i);
+                return;
+            }
+        }
+    }
 }
