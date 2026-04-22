@@ -47,7 +47,7 @@ public class SimpleDBEngine implements DBEngine {
         Map<String, Table> tables = catalog.getTables();
         for (Map.Entry<String, Table> entry : tables.entrySet()) {
             if (entry.getValue() instanceof TableSchema ts) {
-                ts.bind(storage, buffer);
+                ts.bind(storage, buffer, indexingEnabled);
             }
         }
 
@@ -192,29 +192,39 @@ public class SimpleDBEngine implements DBEngine {
     private Result handleDelete(DeleteCommand cmd, DDLParser ddl) throws DBException {
         String tableName = cmd.getTableName();
 
-        if (!catalog.exists(tableName)) {
+        if (!catalog.exists(tableName)){
             return Result.error("No such table: " + tableName);
         }
 
-        if (!(catalog.getTable(tableName) instanceof TableSchema ts)) {
+        if (!(catalog.getTable(tableName) instanceof TableSchema ts)){
             throw new DBException("Unsupported table type");
         }
 
         int deleted = 0;
 
-        for (int pid : ts.getPageIds()) {
+        for (int pid : ts.getPageIds()){
             Page p = buffer.getPage(pid);
             List<Record> records = p.getRecords();
+            boolean changed = false;
 
-            for (int i = records.size() - 1; i >= 0; i--) {
+            for (int i = records.size() - 1; i >= 0; i--){
                 Record r = records.get(i);
-                if (cmd.where(ts.schema(), r)) {
+                if (cmd.where(ts.schema(), r)){
+                    if (ts.getPkIndex() != null){
+                        Attribute pk = ts.schema().getPrimaryKey();
+                        int pkCol = ts.schema().getAttributeIndex(pk.getName());
+                        Comparable<Object> pkVal = (Comparable<Object>) r.getAttributes().get(pkCol).getRaw();
+                        ts.getPkIndex().delete(pkVal);
+                    }
                     records.remove(i);
                     deleted++;
+                    changed = true;
                 }
             }
-
-            buffer.markDirty(pid);
+            if (changed){
+                buffer.markDirty(pid);
+                ts.updateIndexForPage(pid);
+            }
         }
 
         return Result.ok(deleted + " rows deleted");
@@ -271,15 +281,33 @@ public class SimpleDBEngine implements DBEngine {
         }
 
         // all checks passed, now apply
-        for (int pid : ts.getPageIds()) {
+        for (int pid : ts.getPageIds()){
             Page p = buffer.getPage(pid);
-            for (Record r : p.getRecords()) {
-                if (cmd.where(schema, r)) {
+            boolean changed = false;
+
+            for (Record r : p.getRecords()){
+                if (cmd.where(schema, r)){
+                    Attribute attr = schema.getAttributes().get(attrIndex);
+
+                    if (attr.isPrimaryKey() && ts.getPkIndex() != null){
+                        Comparable<Object> oldVal = (Comparable<Object>) r.getAttributes().get(attrIndex).getRaw();
+                        ts.getPkIndex().delete(oldVal);
+                    }
+
                     r.getAttributes().set(attrIndex, new Value(cmd.getValue()));
+
+                    if (attr.isPrimaryKey() && ts.getPkIndex() != null){
+                        Comparable<Object> newVal = (Comparable<Object>) r.getAttributes().get(attrIndex).getRaw();
+                        int slotId = p.getRecords().indexOf(r);
+                        ts.getPkIndex().insert(newVal, new Record_ID(pid, slotId));
+                    }
                     updated++;
+                    changed = true;
                 }
             }
-            buffer.markDirty(pid);
+            if (changed){
+                buffer.markDirty(pid);
+            }
         }
 
         return Result.ok(updated + " rows updated");
