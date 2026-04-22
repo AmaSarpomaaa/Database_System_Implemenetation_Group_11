@@ -60,13 +60,13 @@ public class Attribute {
         not_null = nn;
         type = typ;
 
-        if (primKey && !uniq) {
+        if (primKey) {
             //primary keys are always unique
             primaryKey = true;
             unique = true;
         }
         else {
-            primaryKey = primKey;
+            primaryKey = false;
             unique = uniq;
         }
 

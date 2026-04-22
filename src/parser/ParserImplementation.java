@@ -160,7 +160,7 @@ public class ParserImplementation implements Parser
 
                 if (attributeSplit.length > 2) {  //at least one constraint
 
-                    for (int i = 2; i < attributesSplit.length; i++)
+                    for (int i = 2; i < attributeSplit.length; i++)
                     {
                         switch (attributeSplit[i]) {
                             case "PRIMARYKEY": isPrimaryKey = true; break;
