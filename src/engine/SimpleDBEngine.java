@@ -13,9 +13,7 @@ import ddl.DDLParser;
 import model.*;
 import util.ParseException;
 
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.List;
+import java.util.*;
 
 public class SimpleDBEngine implements DBEngine {
 
@@ -329,5 +327,60 @@ public class SimpleDBEngine implements DBEngine {
             default:                 typeWidth = 10;
         }
         return Math.max(attr.getName().length(), typeWidth);
+    }
+
+    private Object evaluateValue(Object rawValue, Schema schema, Record record) throws DBException {
+        if (!(rawValue instanceof String expr)) {
+            return rawValue; // already a typed literal (Integer, Double, null)
+        }
+
+        // Check if it's a plain attribute name
+        int idx = schema.getAttributeIndex(expr);
+        if (idx >= 0) {
+            return record.getAttributes().get(idx).getRaw();
+        }
+
+        // Try to evaluate as a math expression: <operand> <op> <operand>
+        // operand can be an attribute name or a numeric literal
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("([\\w.]+)\\s*([+\\-*/])\\s*([\\w.]+)")
+                .matcher(expr);
+
+        if (m.matches()) {
+            double left  = resolveNumeric(m.group(1), schema, record);
+            double right = resolveNumeric(m.group(3), schema, record);
+            double result = switch (m.group(2)) {
+                case "+" -> left + right;
+                case "-" -> left - right;
+                case "*" -> left * right;
+                case "/" -> {
+                    if (right == 0) throw new DBException("Division by zero");
+                    yield left / right;
+                }
+                default -> throw new DBException("Unknown operator: " + m.group(2));
+            };
+            if (result == Math.floor(result) && !Double.isInfinite(result)) {
+                return (int) result;
+            }
+            return result;
+        }
+
+        // Plain string literal fallback
+        return expr;
+    }
+
+    private double resolveNumeric(String token, Schema schema, Record record) throws DBException {
+        int idx = schema.getAttributeIndex(token);
+        if (idx >= 0) {
+            Object val = record.getAttributes().get(idx).getRaw();
+            if (val instanceof Number n) return n.doubleValue();
+            throw new DBException("Attribute " + token + " is not numeric");
+        }
+
+        try {
+            return Double.parseDouble(token);
+        } catch (NumberFormatException e) {
+            throw new DBException("Cannot resolve numeric value: " + token);
+        }
     }
 }
