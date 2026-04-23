@@ -42,18 +42,11 @@ public class SimpleDBEngine implements DBEngine {
 
         buffer = new BufferManager();
         buffer.initialize(bufferSize, storage.getPageSize(), storage);
-        fileCatalog.bind(storage, buffer);
 
-        // build a fresh index for any table that doesn't have one yet
-        if (indexingEnabled) {
-            for (Map.Entry<String, Table> entry : catalog.getTables().entrySet()) {
-                if (entry.getValue() instanceof TableSchema ts && ts.getIndex() == null) {
-                    try {
-                        ts.buildIndex(indexMaxKeys);
-                    } catch (DBException ignored) {
-                        // Table has no primary key
-                    }
-                }
+        Map<String, Table> tables = catalog.getTables();
+        for (Map.Entry<String, Table> entry : tables.entrySet()) {
+            if (entry.getValue() instanceof TableSchema ts) {
+                ts.bind(storage, buffer, indexingEnabled);
             }
         }
     }
@@ -167,11 +160,12 @@ public class SimpleDBEngine implements DBEngine {
         Attribute pk       = ts.schema().getPrimaryKey();
         int       pkIndex  = (pk != null) ? ts.schema().getAttributeIndex(pk.getName()) : -1;
 
-        for (int pid : ts.getPageIds()) {
-            Page         p       = buffer.getPage(pid);
+        for (int pid : ts.getPageIds()){
+            Page p = buffer.getPage(pid);
             List<Record> records = p.getRecords();
+            boolean changed = false;
 
-            for (int i = records.size() - 1; i >= 0; i--) {
+            for (int i = records.size() - 1; i >= 0; i--){
                 Record r = records.get(i);
                 if (cmd.where(ts.schema(), r)) {
                     // remove from index before removing from page
@@ -183,9 +177,13 @@ public class SimpleDBEngine implements DBEngine {
                     }
                     records.remove(i);
                     deleted++;
+                    changed = true;
                 }
             }
-            buffer.markDirty(pid);
+            if (changed){
+                buffer.markDirty(pid);
+                ts.updateIndexForPage(pid);
+            }
         }
 
         return Result.ok(deleted + " rows deleted");
@@ -250,10 +248,19 @@ public class SimpleDBEngine implements DBEngine {
                         index.insert(newKey, pid);
                     }
                     r.getAttributes().set(attrIndex, new Value(cmd.getValue()));
+
+                    if (attr.isPrimaryKey() && ts.getPkIndex() != null){
+                        Comparable<Object> newVal = (Comparable<Object>) r.getAttributes().get(attrIndex).getRaw();
+                        int slotId = p.getRecords().indexOf(r);
+                        ts.getPkIndex().insert(newVal, new Record_ID(pid, slotId));
+                    }
                     updated++;
+                    changed = true;
                 }
             }
-            buffer.markDirty(pid);
+            if (changed){
+                buffer.markDirty(pid);
+            }
         }
 
         return Result.ok(updated + " rows updated");
