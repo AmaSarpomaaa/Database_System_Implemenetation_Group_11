@@ -44,6 +44,9 @@ public class DeleteCommand extends ParsedCommand {
     public boolean hasWhere() {
         return whereTree == null;
     }
+    public IWhereTree getWhereTree() {
+        return whereTree;
+    }
 
     @Override
     public CommandType getType() {

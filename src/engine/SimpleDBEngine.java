@@ -12,6 +12,7 @@ import util.DBException;
 import ddl.DDLParser;
 import model.*;
 import util.ParseException;
+import parser.RelopNode;
 
 import java.util.*;
 
@@ -20,12 +21,14 @@ public class SimpleDBEngine implements DBEngine {
     private StorageManager storage;
     private BufferManager  buffer;
     private Catalog        catalog;
+    private boolean indexingEnabled;
 
     @Override
     public void startup(String dbLocation, int pageSize, int bufferSize,
                         boolean indexingEnabled) throws DBException {
 
         java.io.File dir = new java.io.File(dbLocation);
+        this.indexingEnabled = indexingEnabled;
         if (!dir.exists()) dir.mkdirs();
 
         storage = new FileStorageManager();
@@ -36,17 +39,24 @@ public class SimpleDBEngine implements DBEngine {
         int indexMaxKeys = storage.getPageSize() / 10;
 
         FileCatalog fileCatalog = new FileCatalog(dbLocation + "/database.catalog");
-        fileCatalog.setIndexMaxKeys(indexMaxKeys);  // NEW
+        fileCatalog.setIndexMaxKeys(indexMaxKeys);
         catalog = fileCatalog;
         catalog.load();
 
         buffer = new BufferManager();
         buffer.initialize(bufferSize, storage.getPageSize(), storage);
 
-        Map<String, Table> tables = catalog.getTables();
-        for (Map.Entry<String, Table> entry : tables.entrySet()) {
-            if (entry.getValue() instanceof TableSchema ts) {
-                ts.bind(storage, buffer, indexingEnabled);
+        fileCatalog.bind(storage, buffer);
+
+        if (indexingEnabled) {
+            for (Map.Entry<String, Table> entry : catalog.getTables().entrySet()) {
+                if (entry.getValue() instanceof TableSchema ts && ts.getIndex() == null) {
+                    try {
+                        ts.buildIndex(indexMaxKeys);
+                    } catch (DBException ignored) {
+                        // Table has no primary key
+                    }
+                }
             }
         }
     }
@@ -104,10 +114,25 @@ public class SimpleDBEngine implements DBEngine {
             temp_tables.add(wTable);
 
             if (fTable instanceof TableSchema fts) {
-                for (int pid : fts.getPageIds()) {
-                    Page p = buffer.getPage(pid);
-                    for (Record r : p.getRecords()) {
-                        if (cmd.where(wTable.schema(), r)) wTable.insert(r);
+                BPlusTree index = indexingEnabled ? fts.getIndex() : null;
+                Object pkVal    = (index != null) ? extractPKEqualityValue(cmd, fts) : null;
+
+                if (pkVal != null) {
+                    int pid = index.search((Comparable<Object>) pkVal);
+                    // Index lookup — only load the one page
+                    if (pid != -1) {
+                        Page p = buffer.getPage(pid);
+                        for (Record r : p.getRecords()) {
+                            if (cmd.where(wTable.schema(), r)) wTable.insert(r);
+                        }
+                    }
+                } else {
+                    // Full scan fallback
+                    for (int pid : fts.getPageIds()) {
+                        Page p = buffer.getPage(pid);
+                        for (Record r : p.getRecords()) {
+                            if (cmd.where(wTable.schema(), r)) wTable.insert(r);
+                        }
                     }
                 }
             } else {
@@ -126,19 +151,41 @@ public class SimpleDBEngine implements DBEngine {
         return Result.ok(null);
     }
 
+    private Object extractPKEqualityValue(SelectCommand cmd, TableSchema ts) {
+        if (!(cmd.whereTree instanceof RelopNode relop)) return null;
+        Attribute pk = ts.schema().getPrimaryKey();
+        if (pk == null) return null;
+        return relop.getEqualityValue(pk.getName());
+    }
+
     private Result handleInsert(InsertCommand cmd) throws DBException {
         String tableName = cmd.getTableName();
         if (!catalog.exists(tableName)) return Result.error("No such table: " + tableName);
 
-        Table t       = catalog.getTable(tableName);
-        int inserted  = 0;
+        if (!(catalog.getTable(tableName) instanceof TableSchema ts))
+            throw new DBException("Unsupported table type");
+
+        BPlusTree index   = indexingEnabled ? ts.getIndex() : null;
+        Attribute pk      = ts.schema().getPrimaryKey();
+        int       pkIdx   = (pk != null) ? ts.schema().getAttributeIndex(pk.getName()) : -1;
+        int       inserted = 0;
 
         for (List<Object[]> row : cmd.getValues()) {
             if (row == null || row.isEmpty()) continue;
             Record r = new Record();
             for (Object[] pair : row) r.addAttribute(new Value(pair[1]));
             try {
-                t.insert(r);
+                // Fast duplicate check via index
+                if (index != null && pkIdx >= 0) {
+                    Object pkVal = r.getAttributes().get(pkIdx).getRaw();
+                    @SuppressWarnings("unchecked")
+                    int existingPid = index.search((Comparable<Object>) pkVal);
+                    if (existingPid != -1)
+                        throw new DBException("duplicate primary key value: ( " + pkVal + " )");
+                    ts.insert(r, true);  // index already checked, skip internal scan
+                } else {
+                    ts.insert(r, false); // no index, let TableSchema do the full scan check
+                }
                 inserted++;
             } catch (DBException e) {
                 return Result.ok("Error: " + e.getMessage()
@@ -155,34 +202,50 @@ public class SimpleDBEngine implements DBEngine {
         if (!(catalog.getTable(tableName) instanceof TableSchema ts))
             throw new DBException("Unsupported table type");
 
-        int       deleted  = 0;
-        BPlusTree index    = ts.getIndex();
-        Attribute pk       = ts.schema().getPrimaryKey();
-        int       pkIndex  = (pk != null) ? ts.schema().getAttributeIndex(pk.getName()) : -1;
+        int       deleted = 0;
+        BPlusTree index   = indexingEnabled ? ts.getIndex() : null;
+        Attribute pk      = ts.schema().getPrimaryKey();
+        int       pkIndex = (pk != null) ? ts.schema().getAttributeIndex(pk.getName()) : -1;
 
-        for (int pid : ts.getPageIds()){
-            Page p = buffer.getPage(pid);
-            List<Record> records = p.getRecords();
-            boolean changed = false;
+        // Fast path: WHERE pk == value — use index to find the exact page
+        Object pkVal = (index != null && pkIndex >= 0)
+                ? extractPKEqualityValue(cmd, ts) : null;
 
-            for (int i = records.size() - 1; i >= 0; i--){
-                Record r = records.get(i);
-                if (cmd.where(ts.schema(), r)) {
-                    // remove from index before removing from page
-                    if (index != null && pkIndex >= 0) {
-                        Object raw = r.getAttributes().get(pkIndex).getRaw();
-                        @SuppressWarnings("unchecked")
-                        Comparable<Object> key = (Comparable<Object>) raw;
-                        index.delete(key);
+        if (pkVal != null) {
+            @SuppressWarnings("unchecked")
+            int pid = index.search((Comparable<Object>) pkVal);
+            if (pid != -1) {
+                Page         p       = buffer.getPage(pid);
+                List<Record> records = p.getRecords();
+                for (int i = records.size() - 1; i >= 0; i--) {
+                    Record r = records.get(i);
+                    if (cmd.where(ts.schema(), r)) {
+                        index.delete((Comparable<Object>) pkVal);
+                        records.remove(i);
+                        deleted++;
+                        buffer.markDirty(pid);
                     }
-                    records.remove(i);
-                    deleted++;
-                    changed = true;
                 }
             }
-            if (changed){
-                buffer.markDirty(pid);
-                ts.updateIndexForPage(pid);
+        } else {
+            // Full scan fallback
+            for (int pid : ts.getPageIds()) {
+                Page         p       = buffer.getPage(pid);
+                List<Record> records = p.getRecords();
+                boolean      changed = false;
+                for (int i = records.size() - 1; i >= 0; i--) {
+                    Record r = records.get(i);
+                    if (cmd.where(ts.schema(), r)) {
+                        if (index != null && pkIndex >= 0) {
+                            Object raw = r.getAttributes().get(pkIndex).getRaw();
+                            index.delete((Comparable<Object>) raw);
+                        }
+                        records.remove(i);
+                        deleted++;
+                        changed = true;
+                    }
+                }
+                if (changed) buffer.markDirty(pid);
             }
         }
 
@@ -196,70 +259,89 @@ public class SimpleDBEngine implements DBEngine {
         if (!(catalog.getTable(tableName) instanceof TableSchema ts))
             throw new DBException("Unsupported table type");
 
-        Schema schema    = ts.schema();
-        int    attrIndex = schema.getAttributeIndex(cmd.getAttribute());
-        int    updated   = 0;
+        Schema    schema    = ts.schema();
+        int       attrIndex = schema.getAttributeIndex(cmd.getAttribute());
+        int       updated   = 0;
+        BPlusTree index     = indexingEnabled ? ts.getIndex() : null;
+        Attribute pk        = ts.schema().getPrimaryKey();
+        int       pkIndex   = (pk != null) ? ts.schema().getAttributeIndex(pk.getName()) : -1;
+        boolean   updatePK  = schema.getAttributes().get(attrIndex).isPrimaryKey();
 
-        for (int pid : ts.getPageIds()) {
-            Page p = buffer.getPage(pid);
-            for (Record r : p.getRecords()) {
-                if (cmd.where(schema, r)) {
-                    Attribute attr = schema.getAttributes().get(attrIndex);
-                    if (attr.isPrimaryKey()) {
-                        Value newVal     = new Value(cmd.getValue());
-                        int   matchCount = 0;
-                        for (int checkPid : ts.getPageIds()) {
-                            Page cp = buffer.getPage(checkPid);
-                            for (Record cr : cp.getRecords())
-                                if (cmd.where(schema, cr)) matchCount++;
+        // Fast path: WHERE pk == value — use index to find the exact page
+        Object pkVal = (index != null && pkIndex >= 0)
+                ? extractPKEqualityValue(cmd, ts) : null;
+
+        if (pkVal != null) {
+            // Duplicate check for PK update
+            if (updatePK) {
+                @SuppressWarnings("unchecked")
+                int dupPid = index.search((Comparable<Object>) cmd.getValue());
+                if (dupPid != -1)
+                    return Result.error("Duplicate primary key value: " + cmd.getValue());
+            }
+
+            @SuppressWarnings("unchecked")
+            int pid = index.search((Comparable<Object>) pkVal);
+            if (pid != -1) {
+                Page p = buffer.getPage(pid);
+                for (Record r : p.getRecords()) {
+                    if (cmd.where(schema, r)) {
+                        if (updatePK) {
+                            @SuppressWarnings("unchecked")
+                            Comparable<Object> oldKey = (Comparable<Object>) pkVal;
+                            index.delete(oldKey);
+                            @SuppressWarnings("unchecked")
+                            Comparable<Object> newKey = (Comparable<Object>) cmd.getValue();
+                            index.insert(newKey, pid);
                         }
-                        if (matchCount > 1)
-                            return Result.error("Cannot set multiple rows to the same primary key value: " + cmd.getValue());
-                        for (int checkPid : ts.getPageIds()) {
-                            Page cp = buffer.getPage(checkPid);
-                            for (Record cr : cp.getRecords()) {
-                                if (cr == r) continue;
-                                if (cr.getAttributes().get(attrIndex).getRaw()
-                                        .equals(newVal.getRaw()))
-                                    return Result.error("Duplicate primary key value: " + newVal.getRaw());
-                            }
-                        }
+                        r.getAttributes().set(attrIndex, new Value(cmd.getValue()));
+                        updated++;
                     }
                 }
-            }
-        }
-
-        // Apply pass
-        BPlusTree index   = ts.getIndex();
-        boolean  updatePK = schema.getAttributes().get(attrIndex).isPrimaryKey();
-
-        for (int pid : ts.getPageIds()) {
-            Page p = buffer.getPage(pid);
-            for (Record r : p.getRecords()) {
-                if (cmd.where(schema, r)) {
-                    // if this is a PK update, fix the index entry
-                    if (index != null && updatePK) {
-                        Object raw = r.getAttributes().get(attrIndex).getRaw();
-                        @SuppressWarnings("unchecked")
-                        Comparable<Object> oldKey = (Comparable<Object>) raw;
-                        index.delete(oldKey);
-                        @SuppressWarnings("unchecked")
-                        Comparable<Object> newKey = (Comparable<Object>) cmd.getValue();
-                        index.insert(newKey, pid);
-                    }
-                    r.getAttributes().set(attrIndex, new Value(cmd.getValue()));
-
-                    if (attr.isPrimaryKey() && ts.getPkIndex() != null){
-                        Comparable<Object> newVal = (Comparable<Object>) r.getAttributes().get(attrIndex).getRaw();
-                        int slotId = p.getRecords().indexOf(r);
-                        ts.getPkIndex().insert(newVal, new Record_ID(pid, slotId));
-                    }
-                    updated++;
-                    changed = true;
-                }
-            }
-            if (changed){
                 buffer.markDirty(pid);
+            }
+        } else {
+            // Validation pass for PK duplicate check
+            if (updatePK) {
+                if (index != null) {
+                    @SuppressWarnings("unchecked")
+                    int dupPid = index.search((Comparable<Object>) cmd.getValue());
+                    if (dupPid != -1)
+                        return Result.error("Duplicate primary key value: " + cmd.getValue());
+                } else {
+                    // Full scan duplicate check
+                    for (int pid : ts.getPageIds()) {
+                        Page cp = buffer.getPage(pid);
+                        for (Record cr : cp.getRecords()) {
+                            if (cr.getAttributes().get(attrIndex).getRaw()
+                                    .equals(cmd.getValue()))
+                                return Result.error("Duplicate primary key value: " + cmd.getValue());
+                        }
+                    }
+                }
+            }
+
+            // Full scan apply pass
+            for (int pid : ts.getPageIds()) {
+                Page    p       = buffer.getPage(pid);
+                boolean changed = false;
+                for (Record r : p.getRecords()) {
+                    if (cmd.where(schema, r)) {
+                        if (index != null && updatePK) {
+                            Object raw = r.getAttributes().get(attrIndex).getRaw();
+                            @SuppressWarnings("unchecked")
+                            Comparable<Object> oldKey = (Comparable<Object>) raw;
+                            index.delete(oldKey);
+                            @SuppressWarnings("unchecked")
+                            Comparable<Object> newKey = (Comparable<Object>) cmd.getValue();
+                            index.insert(newKey, pid);
+                        }
+                        r.getAttributes().set(attrIndex, new Value(cmd.getValue()));
+                        updated++;
+                        changed = true;
+                    }
+                }
+                if (changed) buffer.markDirty(pid);
             }
         }
 
@@ -338,17 +420,14 @@ public class SimpleDBEngine implements DBEngine {
 
     private Object evaluateValue(Object rawValue, Schema schema, Record record) throws DBException {
         if (!(rawValue instanceof String expr)) {
-            return rawValue; // already a typed literal (Integer, Double, null)
+            return rawValue;
         }
 
-        // Check if it's a plain attribute name
         int idx = schema.getAttributeIndex(expr);
         if (idx >= 0) {
             return record.getAttributes().get(idx).getRaw();
         }
 
-        // Try to evaluate as a math expression: <operand> <op> <operand>
-        // operand can be an attribute name or a numeric literal
         java.util.regex.Matcher m = java.util.regex.Pattern
                 .compile("([\\w.]+)\\s*([+\\-*/])\\s*([\\w.]+)")
                 .matcher(expr);
@@ -372,7 +451,6 @@ public class SimpleDBEngine implements DBEngine {
             return result;
         }
 
-        // Plain string literal fallback
         return expr;
     }
 
@@ -389,5 +467,18 @@ public class SimpleDBEngine implements DBEngine {
         } catch (NumberFormatException e) {
             throw new DBException("Cannot resolve numeric value: " + token);
         }
+    }
+    private Object extractPKEqualityValue(DeleteCommand cmd, TableSchema ts) {
+        if (!(cmd.getWhereTree() instanceof RelopNode relop)) return null;
+        Attribute pk = ts.schema().getPrimaryKey();
+        if (pk == null) return null;
+        return relop.getEqualityValue(pk.getName());
+    }
+
+    private Object extractPKEqualityValue(UpdateCommand cmd, TableSchema ts) {
+        if (!(cmd.getWhereTree() instanceof RelopNode relop)) return null;
+        Attribute pk = ts.schema().getPrimaryKey();
+        if (pk == null) return null;
+        return relop.getEqualityValue(pk.getName());
     }
 }

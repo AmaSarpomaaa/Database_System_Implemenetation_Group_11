@@ -23,7 +23,7 @@ public class SelectCommand extends ParsedCommand {
      * if the command is a select * command (selecting all attributes), attributeNames will be null
      */
     protected String[][] attributeNames;
-    protected IWhereTree whereTree;
+    public IWhereTree whereTree;
     /*
      * A pair of strings representing the attribute to orderby in the form:
      * [tableName, attributeName]<br>

@@ -147,8 +147,8 @@ public class BPlusTree {
         // Move the right half into a brand-new leaf
         NodeContent newLeaf = new NodeContent(LEAF, leaf.nextPageId);
         while (leaf.keys.size() > mid) {
-            newLeaf.keys.add(0, leaf.keys.remove(mid));
-            newLeaf.pointers.add(0, leaf.pointers.remove(mid));
+            newLeaf.keys.add(leaf.keys.remove(mid));
+            newLeaf.pointers.add(leaf.pointers.remove(mid));
         }
 
         int newLeafId      = storage.allocatePage();
@@ -166,18 +166,22 @@ public class BPlusTree {
         int mid = node.keys.size() / 2;
         Comparable<Object> promotedKey = node.keys.get(mid);
 
-        // Right half into a new internal node
+        // Right half keys (after promoted key)
         NodeContent newNode = new NodeContent(INTERNAL, NO_PAGE);
         while (node.keys.size() > mid + 1) {
-            newNode.keys.add(0, node.keys.remove(mid + 1));
+            newNode.keys.add(node.keys.remove(mid + 1));
         }
-        node.keys.remove(mid);
+        node.keys.remove(mid); // remove promoted key from node
+
+        // Right half pointers — newNode gets pointers from mid+1 onwards
+        // node keeps pointers 0..mid (mid+1 pointers for mid keys) ✓
+        // newNode gets pointers mid+1..end (one more than its keys) ✓
         while (node.pointers.size() > mid + 1) {
-            newNode.pointers.add(0, node.pointers.remove(mid + 1));
+            newNode.pointers.add(node.pointers.remove(mid + 1));
         }
 
         int newNodeId = storage.allocatePage();
-        writeNode(nodeId,   node);
+        writeNode(nodeId,    node);
         writeNode(newNodeId, newNode);
 
         promote(promotedKey, newNodeId, path);
@@ -220,8 +224,7 @@ public class BPlusTree {
      * Reads a node page from disk.
      */
     private NodeContent readNode(int pageId) throws DBException {
-        buffer.getPage(pageId);                       // keep LRU accurate
-        byte[] data = storage.readPageBytes(pageId);  // raw bytes, our format
+        byte[] data = storage.readPageBytes(pageId);
         return deserialize(data);
     }
 
@@ -231,7 +234,7 @@ public class BPlusTree {
     private void writeNode(int pageId, NodeContent node) throws DBException {
         byte[] data = serialize(node);
         storage.writePageBytes(pageId, data);
-        buffer.markDirty(pageId);
+        // do NOT call buffer.markDirty() — index pages manage their own persistence
     }
 
     /**

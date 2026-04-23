@@ -80,11 +80,14 @@ public class JottQL {
 
             try {
                 SimpleDBEngine simpleEngine = (SimpleDBEngine) engine;
+                long start = System.currentTimeMillis();
                 Result result = simpleEngine.execute(statement);
+                long end = System.currentTimeMillis();
 
                 if (result != null && result.getMessage() != null) {
                     System.out.println(result.getMessage());
                 }
+                System.out.println("Query executed in " + (end - start) + "ms");
 
             } catch (DBException e) {
                 System.out.println("Error: " + e.getMessage());

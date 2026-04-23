@@ -100,60 +100,76 @@ public class TableSchema implements Table {
         if (storage == null || buffer == null)
             throw new DBException("Table not bound to storage/buffer");
 
+        if (index == null) {
+            try { buildIndex(storage.getPageSize() / 10); }
+            catch (DBException ignored) {}
+        }
+
         schema.validate(record);
         Attribute pk = schema.getPrimaryKey();
         if (pk == null && !allowDup)
             throw new DBException("Table has no primary key");
 
-        int    pkIndex  = schema.getAttributeIndex(pk.getName());
-        Object pkValue  = record.getAttributes().get(pkIndex).getRaw();
+        int    pkIndex = schema.getAttributeIndex(pk.getName());
+        Object pkValue = record.getAttributes().get(pkIndex).getRaw();
 
-        // Check duplicates and find the right insertion page
-        for (int i = 0; i < pageIds.size(); i++) {
-            int          pid     = pageIds.get(i);
-            Page         p       = buffer.getPage(pid);
-            List<Record> records = p.getRecords();
-
-            for (Record existing : records) {
-                Object existingPk = existing.getAttributes().get(pkIndex).getRaw();
-                if (pkValue != null && pkValue.equals(existingPk) && !allowDup)
+        // duplicate check if needed
+        if (!allowDup) {
+            if (index != null) {
+                @SuppressWarnings("unchecked")
+                int existingPid = index.search((Comparable<Object>) pkValue);
+                if (existingPid != -1)
                     throw new DBException("duplicate primary key value: ( " + pkValue + " )");
-            }
-
-            boolean isLastPage = (i == pageIds.size() - 1);
-            Object  lastPk     = records.isEmpty() ? null
-                    : records.get(records.size() - 1).getAttributes().get(pkIndex).getRaw();
-
-            if (records.isEmpty() || compareKeys(pkValue, lastPk) <= 0 || isLastPage) {
-                if (buffer.canFitRecord(p, record)) {
-                    insertIntoSortedPosition(records, record, pkIndexCol);
-                    buffer.markDirty(pid);
-                    updateIndex(pkValue, pid);  // index update
-                    return;
-                }
-                else{
-                    insertIntoSortedPosition(records, record, pkIndexCol);
-                    splitPage(i, p);
-                    buffer.markDirty(pid);
-
-                    // Page split may have moved records
-                    if (index != null) {
-                        rebuildIndexForPage(pageIds.get(i),   pkIndex);
-                        rebuildIndexForPage(pageIds.get(i + 1), pkIndex);
-                        indexRootPageId = index.getRootPageId();
+            } else {
+                for (int i = 0; i < pageIds.size(); i++) {
+                    Page p = buffer.getPage(pageIds.get(i));
+                    for (Record existing : p.getRecords()) {
+                        Object existingPk = existing.getAttributes().get(pkIndex).getRaw();
+                        if (pkValue != null && pkValue.equals(existingPk))
+                            throw new DBException("duplicate primary key value: ( " + pkValue + " )");
                     }
-                    return;
                 }
             }
         }
 
-        // No pages yet so allocate the first one
-        int  pid     = storage.allocatePage();
-        pageIds.add(pid);
-        Page newPage = buffer.getPage(pid);
-        newPage.addRecord(record);
-        buffer.markDirty(pid);
-        updateIndex(pkValue, pid);
+        // No pages yet — allocate first
+        if (pageIds.isEmpty()) {
+            int  pid     = storage.allocatePage();
+            pageIds.add(pid);
+            Page newPage = buffer.getPage(pid);
+            newPage.addRecord(record);
+            buffer.markDirty(pid);
+            updateIndex(pkValue, pid);
+            return;
+        }
+
+        // Use index to find the right page, fall back to last page
+        int targetPid = -1;
+        if (index != null) {
+            // find the page of the largest key <= pkValue via range search
+            // just use last page as target and let sorted insert handle it,
+            // but skip the full scan by going straight to last page
+        }
+
+        // Fall back: just append to last page, split if needed
+        int  lastIdx = pageIds.size() - 1;
+        int  pid     = pageIds.get(lastIdx);
+        Page p       = buffer.getPage(pid);
+
+        if (buffer.canFitRecord(p, record)) {
+            insertIntoSortedPosition(p.getRecords(), record, pkIndex);
+            buffer.markDirty(pid);
+            updateIndex(pkValue, pid);
+        } else {
+            insertIntoSortedPosition(p.getRecords(), record, pkIndex);
+            splitPage(lastIdx, p);
+            buffer.markDirty(pid);
+            if (index != null) {
+                rebuildIndexForPage(pageIds.get(lastIdx), pkIndex);
+                rebuildIndexForPage(pageIds.get(lastIdx + 1), pkIndex);
+                indexRootPageId = index.getRootPageId();
+            }
+        }
     }
 
     private void updateIndex(Object pkValue, int dataPageId) throws DBException {
@@ -163,6 +179,12 @@ public class TableSchema implements Table {
         index.delete(key);               // remove stale entry if present
         index.insert(key, dataPageId);
         indexRootPageId = index.getRootPageId();
+        // DEBUG: verify immediately after insert
+        @SuppressWarnings("unchecked")
+        int verify = index.search((Comparable<Object>) pkValue);
+        if (verify == -1) {
+            System.out.println("DEBUG updateIndex: FAILED to find key=" + pkValue + " after insert");
+        }
     }
 
     private void rebuildIndexForPage(int pid, int pkIndex) throws DBException {
@@ -174,6 +196,7 @@ public class TableSchema implements Table {
             Comparable<Object> key = (Comparable<Object>) raw;
             index.delete(key);
             index.insert(key, pid);
+            indexRootPageId = index.getRootPageId();
         }
     }
 
@@ -243,50 +266,15 @@ public class TableSchema implements Table {
         }
     }
 
-    private index.BPlusTree pkIndex;
-    private boolean indexingEnabled;
-    public index.BPlusTree getPkIndex() {
-        return pkIndex;
-    }
-
     public void bind(StorageManager storage, BufferManager buffer, boolean indexingEnabled) {
         this.storage = storage;
-        this.buffer = buffer;
-        this.indexingEnabled = indexingEnabled;
-        buildIndex();
-    }
-    public void buildIndex() {
-        if (!indexingEnabled) return;
-
-        Attribute pk = schema.getPrimaryKey();
-        if (pk != null) {
-            pkIndex = new index.BPlusTree(4);
-            int pkIndexCol = schema.getAttributeIndex(pk.getName());
+        this.buffer  = buffer;
+        if (indexingEnabled) {
             try {
-                for (int pid : pageIds) {
-                    Page p = buffer.getPage(pid);
-                    List<Record> records = p.getRecords();
-                    for (int i = 0; i < records.size(); i++) {
-                        Comparable<Object> key = (Comparable<Object>) records.get(i).getAttributes().get(pkIndexCol).getRaw();
-                        pkIndex.insert(key, new Record_ID(pid, i));
-                    }
-                }
-            } catch (DBException e) {
-                e.printStackTrace();
+                buildIndex(storage.getPageSize() / 10);
+            } catch (DBException ignored) {
+                // Table has no primary key
             }
-        }
-    }
-
-    public void updateIndexForPage(int pid) throws DBException {
-        if (pkIndex == null || !indexingEnabled) return;
-
-        Page p = buffer.getPage(pid);
-        int pkCol = schema.getAttributeIndex(schema.getPrimaryKey().getName());
-        List<Record> records = p.getRecords();
-        for (int i = 0; i < records.size(); i++) {
-            Comparable<Object> key = (Comparable<Object>) records.get(i).getAttributes().get(pkCol).getRaw();
-            pkIndex.delete(key);
-            pkIndex.insert(key, new Record_ID(pid, i));
         }
     }
 }

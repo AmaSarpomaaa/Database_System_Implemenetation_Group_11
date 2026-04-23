@@ -56,4 +56,12 @@ public class RelopNode implements IWhereTree{
             throw new DBException("Operator provided is invalid:" + operator);
         }
     }
+    public Object getEqualityValue(String attrName) {
+        if (!operator.equals("==")) return null;
+        if (left instanceof AttrNode a && right instanceof ValueNode v
+                && a.attrName.equals(attrName)) return v.value.getRaw();
+        if (right instanceof AttrNode a && left instanceof ValueNode v
+                && a.attrName.equals(attrName)) return v.value.getRaw();
+        return null;
+    }
 }

@@ -61,4 +61,8 @@ public class UpdateCommand extends ParsedCommand {
     public CommandType getType() {
         return CommandType.UPDATE;
     }
+
+    public IWhereTree getWhereTree() {
+        return whereTree;
+    }
 }
