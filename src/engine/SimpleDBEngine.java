@@ -3,8 +3,8 @@ package engine;
 import buffer.BufferManager;
 import catalog.Catalog;
 import catalog.FileCatalog;
+import index.BPlusTree;
 import model.Record;
-import parser.IWhereTree;
 import parser.ParserImplementation;
 import storage.FileStorageManager;
 import storage.StorageManager;
@@ -20,64 +20,61 @@ import java.util.List;
 public class SimpleDBEngine implements DBEngine {
 
     private StorageManager storage;
-    private BufferManager buffer;
-    private Catalog catalog;
+    private BufferManager  buffer;
+    private Catalog        catalog;
 
     @Override
-    public void startup(String dbLocation, int pageSize, int bufferSize, boolean indexingEnabled) throws DBException {
+    public void startup(String dbLocation, int pageSize, int bufferSize,
+                        boolean indexingEnabled) throws DBException {
 
         java.io.File dir = new java.io.File(dbLocation);
-        if (!dir.exists()) {
-            dir.mkdirs();
-        }
-
-
+        if (!dir.exists()) dir.mkdirs();
 
         storage = new FileStorageManager();
-        storage.open(dbLocation +"/database.db", pageSize);
+        storage.open(dbLocation + "/database.db", pageSize);
 
-        catalog = new FileCatalog(dbLocation + "/database.catalog");
+        // maxKeys: how many keys fit comfortably in one index page.
+        // pageSize / 10 is conservative and works for all key types.
+        int indexMaxKeys = storage.getPageSize() / 10;
+
+        FileCatalog fileCatalog = new FileCatalog(dbLocation + "/database.catalog");
+        fileCatalog.setIndexMaxKeys(indexMaxKeys);  // NEW
+        catalog = fileCatalog;
         catalog.load();
-
-
 
         buffer = new BufferManager();
         buffer.initialize(bufferSize, storage.getPageSize(), storage);
+        fileCatalog.bind(storage, buffer);
 
-        Map<String, Table> tables = catalog.getTables();
-        for (Map.Entry<String, Table> entry : tables.entrySet()) {
-            if (entry.getValue() instanceof TableSchema ts) {
-                ts.bind(storage, buffer);
+        // build a fresh index for any table that doesn't have one yet
+        if (indexingEnabled) {
+            for (Map.Entry<String, Table> entry : catalog.getTables().entrySet()) {
+                if (entry.getValue() instanceof TableSchema ts && ts.getIndex() == null) {
+                    try {
+                        ts.buildIndex(indexMaxKeys);
+                    } catch (DBException ignored) {
+                        // Table has no primary key
+                    }
+                }
             }
         }
-
     }
 
     @Override
     public void shutdown() throws DBException {
+        // Save schemas and updated indexRootPageIds to the catalog file
+        if (catalog != null) catalog.save();
 
-        // Save schemas first (catalog)
-        if (catalog != null) {
-            catalog.save();
-        }
+        // Flush all data pages and index pages to disk
+        if (buffer != null) buffer.flushAll();
 
-        // Flush dirty pages to disk
-        if (buffer != null) {
-            buffer.flushAll();
-        }
-
-        // Close database file
-        if (storage != null) {
-            storage.close();
-        }
+        // Close the database file
+        if (storage != null) storage.close();
     }
 
-
-    public Catalog getCatalog() { return catalog; }
-    public BufferManager getBuffer() { return buffer; }
+    public Catalog        getCatalog() { return catalog; }
+    public BufferManager  getBuffer()  { return buffer;  }
     public StorageManager getStorage() { return storage; }
-
-
 
     public Result execute(String statement) throws DBException {
         ParsedCommand cmd;
@@ -89,49 +86,37 @@ public class SimpleDBEngine implements DBEngine {
 
         DDLParser ddl = new DDLParser(catalog, storage, buffer);
 
-        // ---------- DDL ----------
-        if (cmd instanceof CreateTableCommand) return ddl.createTable((CreateTableCommand) cmd);
-        if (cmd instanceof DropTableCommand) return ddl.dropTable((DropTableCommand) cmd);
-        if (cmd instanceof AlterTableAddCommand) return ddl.alterTableAdd((AlterTableAddCommand) cmd);
+        if (cmd instanceof CreateTableCommand)    return ddl.createTable((CreateTableCommand) cmd);
+        if (cmd instanceof DropTableCommand)      return ddl.dropTable((DropTableCommand) cmd);
+        if (cmd instanceof AlterTableAddCommand)  return ddl.alterTableAdd((AlterTableAddCommand) cmd);
         if (cmd instanceof AlterTableDropCommand) return ddl.alterTableDrop((AlterTableDropCommand) cmd);
 
-        // ---------- SELECT ----------
         if (cmd instanceof SelectCommand) return handleSelect((SelectCommand) cmd, ddl);
-
-        // ---------- INSERT ----------
         if (cmd instanceof InsertCommand) return handleInsert((InsertCommand) cmd);
-
-        // ---------- DELETE ----------
         if (cmd instanceof DeleteCommand) return handleDelete((DeleteCommand) cmd, ddl);
-
-// ---------- UPDATE ----------
         if (cmd instanceof UpdateCommand) return handleUpdate((UpdateCommand) cmd);
 
         throw new DBException("Unsupported command.");
     }
 
     private Result handleSelect(SelectCommand cmd, DDLParser ddl) throws DBException {
-        ArrayList<Table> temp_tables = new ArrayList<Table>();
+        ArrayList<Table> temp_tables = new ArrayList<>();
         try {
-            //error checking
             for (String name : cmd.getTableNames()) {
-                if (!catalog.exists(name)) {
-                    return Result.error("No such table: " + name);
-                }
+                if (!catalog.exists(name)) return Result.error("No such table: " + name);
             }
+
             Table fTable = cmd.from(catalog, storage, buffer, ddl);
             temp_tables.add(fTable);
 
-            //Where Table
             Table wTable = new TableSchema("w_table", fTable.schema(), storage, buffer);
             temp_tables.add(wTable);
+
             if (fTable instanceof TableSchema fts) {
                 for (int pid : fts.getPageIds()) {
                     Page p = buffer.getPage(pid);
-                    for (model.Record r : p.getRecords()) {
-                        if (cmd.where(wTable.schema(), r)){
-                            wTable.insert(r);
-                        }
+                    for (Record r : p.getRecords()) {
+                        if (cmd.where(wTable.schema(), r)) wTable.insert(r);
                     }
                 }
             } else {
@@ -140,80 +125,68 @@ public class SimpleDBEngine implements DBEngine {
 
             Table oTable = cmd.orderBy(wTable, catalog, storage, buffer, ddl);
             temp_tables.add(oTable);
+            print_helper(oTable, cmd);
 
-            print_helper(oTable,cmd);
-
-
-        } finally{
-            //Always drop temp tables
+        } finally {
             for (Table t : temp_tables) {
-                if (t.isTemporary())
-                    ddl.dropTable(t.name());
+                if (t.isTemporary()) ddl.dropTable(t.name());
             }
         }
-
         return Result.ok(null);
     }
 
     private Result handleInsert(InsertCommand cmd) throws DBException {
         String tableName = cmd.getTableName();
+        if (!catalog.exists(tableName)) return Result.error("No such table: " + tableName);
 
-        if (!catalog.exists(tableName)) {
-            return Result.error("No such table: " + tableName);
-        }
+        Table t       = catalog.getTable(tableName);
+        int inserted  = 0;
 
-        Table t = catalog.getTable(tableName);
-        int inserted = 0;
-
-        // InsertCommand stores rows as List<Object[]>, and rows separated by addRow()
         for (List<Object[]> row : cmd.getValues()) {
             if (row == null || row.isEmpty()) continue;
-
-            model.Record r = new model.Record();
-            for (Object[] pair : row) {
-                Object raw = pair[1];              // pair[0] is Datatype, pair[1] is the value
-                r.addAttribute(new Value(raw));
-            }
-
+            Record r = new Record();
+            for (Object[] pair : row) r.addAttribute(new Value(pair[1]));
             try {
                 t.insert(r);
                 inserted++;
             } catch (DBException e) {
-                return Result.ok("Error: " + e.getMessage() + "\n" + inserted + " rows inserted successfully");
+                return Result.ok("Error: " + e.getMessage()
+                        + "\n" + inserted + " rows inserted successfully");
             }
         }
-
-
         return Result.ok(inserted + " rows inserted successfully");
-
-
     }
 
     private Result handleDelete(DeleteCommand cmd, DDLParser ddl) throws DBException {
         String tableName = cmd.getTableName();
+        if (!catalog.exists(tableName)) return Result.error("No such table: " + tableName);
 
-        if (!catalog.exists(tableName)) {
-            return Result.error("No such table: " + tableName);
-        }
-
-        if (!(catalog.getTable(tableName) instanceof TableSchema ts)) {
+        if (!(catalog.getTable(tableName) instanceof TableSchema ts))
             throw new DBException("Unsupported table type");
-        }
 
-        int deleted = 0;
+        int       deleted  = 0;
+        BPlusTree index    = ts.getIndex();
+        Attribute pk       = ts.schema().getPrimaryKey();
+        int       pkIndex  = (pk != null) ? ts.schema().getAttributeIndex(pk.getName()) : -1;
 
         for (int pid : ts.getPageIds()) {
-            Page p = buffer.getPage(pid);
+            Page         p       = buffer.getPage(pid);
             List<Record> records = p.getRecords();
 
             for (int i = records.size() - 1; i >= 0; i--) {
                 Record r = records.get(i);
                 if (cmd.where(ts.schema(), r)) {
+                    // remove from index before removing from page
+                    if (index != null && pkIndex >= 0) {
+                        Object raw = r.getAttributes().get(pkIndex).getRaw();
+                        @SuppressWarnings("unchecked")
+                        Comparable<Object> key = (Comparable<Object>) raw;
+                        index.delete(key);
+                    }
                     records.remove(i);
                     deleted++;
                 }
             }
-
             buffer.markDirty(pid);
         }
 
@@ -222,18 +195,14 @@ public class SimpleDBEngine implements DBEngine {
 
     private Result handleUpdate(UpdateCommand cmd) throws DBException {
         String tableName = cmd.getTableName();
+        if (!catalog.exists(tableName)) return Result.error("No such table: " + tableName);
 
-        if (!catalog.exists(tableName)) {
-            return Result.error("No such table: " + tableName);
-        }
-
-        if (!(catalog.getTable(tableName) instanceof TableSchema ts)) {
+        if (!(catalog.getTable(tableName) instanceof TableSchema ts))
             throw new DBException("Unsupported table type");
-        }
 
-        Schema schema = ts.schema();
-        int attrIndex = schema.getAttributeIndex(cmd.getAttribute());
-        int updated = 0;
+        Schema schema    = ts.schema();
+        int    attrIndex = schema.getAttributeIndex(cmd.getAttribute());
+        int    updated   = 0;
 
         for (int pid : ts.getPageIds()) {
             Page p = buffer.getPage(pid);
@@ -241,28 +210,22 @@ public class SimpleDBEngine implements DBEngine {
                 if (cmd.where(schema, r)) {
                     Attribute attr = schema.getAttributes().get(attrIndex);
                     if (attr.isPrimaryKey()) {
-                        Value newVal = new Value(cmd.getValue());
-                        // check uniqueness against all records
-                        if (attr.isPrimaryKey()) {
-                            // count how many rows will be updated
-                            int matchCount = 0;
-                            for (int checkPid : ts.getPageIds()) {
-                                Page checkPage = buffer.getPage(checkPid);
-                                for (Record checkRec : checkPage.getRecords()) {
-                                    if (cmd.where(schema, checkRec)) matchCount++;
-                                }
-                            }
-                            if (matchCount > 1) {
-                                return Result.error("Cannot set multiple rows to the same primary key value: " + cmd.getValue());
-                            }
-                            for (int checkPid : ts.getPageIds()) {
-                                Page checkPage = buffer.getPage(checkPid);
-                                for (Record checkRec : checkPage.getRecords()) {
-                                    if (checkRec == r) continue;
-                                    if (checkRec.getAttributes().get(attrIndex).getRaw().equals(newVal.getRaw())) {
-                                        return Result.error("Duplicate primary key value: " + newVal.getRaw());
-                                    }
-                                }
+                        Value newVal     = new Value(cmd.getValue());
+                        int   matchCount = 0;
+                        for (int checkPid : ts.getPageIds()) {
+                            Page cp = buffer.getPage(checkPid);
+                            for (Record cr : cp.getRecords())
+                                if (cmd.where(schema, cr)) matchCount++;
+                        }
+                        if (matchCount > 1)
+                            return Result.error("Cannot set multiple rows to the same primary key value: " + cmd.getValue());
+                        for (int checkPid : ts.getPageIds()) {
+                            Page cp = buffer.getPage(checkPid);
+                            for (Record cr : cp.getRecords()) {
+                                if (cr == r) continue;
+                                if (cr.getAttributes().get(attrIndex).getRaw()
+                                        .equals(newVal.getRaw()))
+                                    return Result.error("Duplicate primary key value: " + newVal.getRaw());
                             }
                         }
                     }
@@ -270,11 +233,24 @@ public class SimpleDBEngine implements DBEngine {
             }
         }
 
-        // all checks passed, now apply
+        // Apply pass
+        BPlusTree index   = ts.getIndex();
+        boolean  updatePK = schema.getAttributes().get(attrIndex).isPrimaryKey();
+
         for (int pid : ts.getPageIds()) {
             Page p = buffer.getPage(pid);
             for (Record r : p.getRecords()) {
                 if (cmd.where(schema, r)) {
+                    // if this is a PK update, fix the index entry
+                    if (index != null && updatePK) {
+                        Object raw = r.getAttributes().get(attrIndex).getRaw();
+                        @SuppressWarnings("unchecked")
+                        Comparable<Object> oldKey = (Comparable<Object>) raw;
+                        index.delete(oldKey);
+                        @SuppressWarnings("unchecked")
+                        Comparable<Object> newKey = (Comparable<Object>) cmd.getValue();
+                        index.insert(newKey, pid);
+                    }
                     r.getAttributes().set(attrIndex, new Value(cmd.getValue()));
                     updated++;
                 }
@@ -285,39 +261,34 @@ public class SimpleDBEngine implements DBEngine {
         return Result.ok(updated + " rows updated");
     }
 
-
-
     private void print_helper(Table t, SelectCommand s) throws DBException {
-        Schema schema = t.schema();
+        Schema          schema   = t.schema();
         List<Attribute> allAttrs = schema.getAttributes();
 
-        // Determine which column indices to print
         List<Integer> colIndices = new ArrayList<>();
         if (s == null || s.isSelectStar()) {
             for (int i = 0; i < allAttrs.size(); i++) {
-                if (!allAttrs.get(i).getName().equals("__pk") && !allAttrs.get(i).getName().endsWith(".__pk"))
-                    colIndices.add(i);
+                String n = allAttrs.get(i).getName();
+                if (!n.equals("__pk") && !n.endsWith(".__pk")) colIndices.add(i);
             }
         } else {
             for (String[] pair : s.getAttributeNames()) {
                 String attrName = pair[1];
-                int found = -1;
+                int    found    = -1;
                 for (int i = 0; i < allAttrs.size(); i++) {
-                    if (allAttrs.get(i).getName().equalsIgnoreCase(attrName) ||
-                            allAttrs.get(i).getName().endsWith("." + attrName)) {
+                    if (allAttrs.get(i).getName().equalsIgnoreCase(attrName)
+                            || allAttrs.get(i).getName().endsWith("." + attrName)) {
                         found = i;
                         break;
                     }
                 }
-                if (found == -1) {
-                    throw new DBException("No such attribute: " + attrName);
-                }
+                if (found == -1) throw new DBException("No such attribute: " + attrName);
                 colIndices.add(found);
             }
         }
 
-        int colCount = colIndices.size();
-        int[] widths = new int[colCount];
+        int   colCount = colIndices.size();
+        int[] widths   = new int[colCount];
         for (int i = 0; i < colCount; i++)
             widths[i] = getColumnWidth(allAttrs.get(colIndices.get(i)));
 
@@ -327,20 +298,18 @@ public class SimpleDBEngine implements DBEngine {
         System.out.println(divider);
         StringBuilder header = new StringBuilder("|");
         for (int i = 0; i < colCount; i++)
-            header.append(String.format(" %-" + widths[i] + "s |", allAttrs.get(colIndices.get(i)).getName()));
+            header.append(String.format(" %-" + widths[i] + "s |",
+                    allAttrs.get(colIndices.get(i)).getName()));
         System.out.println(header);
         System.out.println(divider);
 
-        // Stream page by page instead of scan()
-        if (!(t instanceof TableSchema ts)) {
-            throw new DBException("Unsupported table type");
-        }
+        if (!(t instanceof TableSchema ts)) throw new DBException("Unsupported table type");
         for (int pid : ts.getPageIds()) {
             Page p = buffer.getPage(pid);
             for (Record r : p.getRecords()) {
                 StringBuilder row = new StringBuilder("|");
                 for (int i = 0; i < colCount; i++) {
-                    Value v = r.getAttributes().get(colIndices.get(i));
+                    Value  v    = r.getAttributes().get(colIndices.get(i));
                     String cell = (v == null || v.getRaw() == null) ? "NULL" : v.getRaw().toString();
                     row.append(String.format(" %-" + widths[i] + "s |", cell));
                 }
@@ -349,26 +318,16 @@ public class SimpleDBEngine implements DBEngine {
         }
         System.out.println(divider);
     }
+
     private int getColumnWidth(Attribute attr) {
-        String name = attr.getName();
         int typeWidth;
         switch (attr.getType()) {
-            case CHAR:
-            case VARCHAR:
-                typeWidth = attr.getDataLength();
-                break;
-            case INTEGER:
-                typeWidth = 11; // max int digits + sign
-                break;
-            case DOUBLE:
-                typeWidth = 20; // reasonable max for doubles
-                break;
-            case BOOLEAN:
-                typeWidth = 5; // "false"
-                break;
-            default:
-                typeWidth = 10;
+            case CHAR: case VARCHAR: typeWidth = attr.getDataLength(); break;
+            case INTEGER:            typeWidth = 11;  break;
+            case DOUBLE:             typeWidth = 20;  break;
+            case BOOLEAN:            typeWidth = 5;   break;
+            default:                 typeWidth = 10;
         }
-        return Math.max(name.length(), typeWidth);
+        return Math.max(attr.getName().length(), typeWidth);
     }
 }
