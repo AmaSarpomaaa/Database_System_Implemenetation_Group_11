@@ -17,7 +17,7 @@ public class Schema {
      */
     public Attribute getPrimaryKey() {
         for (Attribute attr : attributeList) {
-            if (attr.unique) {  // unique field represents PRIMARYKEY
+            if (attr.isPrimaryKey()) {  // unique field represents PRIMARYKEY
                 return attr;
             }
         }
@@ -26,11 +26,11 @@ public class Schema {
 
     public void setPK(String name){
         for (Attribute attr : attributeList) {
-            if (attr.unique) {
-                attr.setUnique(false);
+            if (attr.isPrimaryKey()) {
+                attr.setPrimaryKey(false);
             }
             if(attr.name.equals(name)){
-                attr.setUnique(true);
+                attr.setPrimaryKey(true);
             }
         }
     }

@@ -5,6 +5,7 @@ public class Attribute {
     String name;
     boolean not_null;
     boolean unique;
+    boolean primaryKey;
     Datatype type;
     /**
      * The length of the dataType if the data is of a type that has a length.
@@ -13,15 +14,62 @@ public class Attribute {
      */
     private int dataLength;
 
-    public Attribute(String na, boolean nn, boolean uniq, Datatype typ){
-        this(na, nn, uniq, typ, -1);
+    /**
+     * Don't use this constructor. It's deprecated
+     * Sets unique equal to the primKey value.
+     * Automatically sets the Attribute to not have a dataLength regardless of the type
+     * Equivalent to Attribute(na, nn, primKey, primKey, typ, -1)
+     * @deprecated
+     * @param na The name of the attribute.
+     * @param nn true if the attribute has a not null constraint, false otherwise
+     * @param primKey true if the attribute is a primaryKey, false otherwise
+     *                The unique constraint is also set to the same value
+     * @param typ The datatype of the attribute
+     */
+    @Deprecated
+    public Attribute(String na, boolean nn, boolean primKey, Datatype typ){
+        this(na, nn, primKey, primKey, typ, -1);
     }
 
-    public Attribute(String na, boolean nn, boolean uniq, Datatype typ, int dataLen){
+    /**
+     * Sets unique equal to the primKey value.
+     * Equivalent to Attribute(na, nn, primKey, primKey, typ, dataLen)
+     * @param na The name of the attribute.
+     * @param nn true if the attribute has a not null constraint, false otherwise
+     * @param primKey true if the attribute is a primaryKey, false otherwise
+     *                The unique constraint is also set to the same value
+     * @param typ The dataType of the attribute
+     * @param dataLen The length of the dataType if the attribute is a CHAR or VARCHAR dataType.
+     *                Ignored if typ is not CHAR or VARCHAR.
+     */
+    public Attribute(String na, boolean nn, boolean primKey, Datatype typ, int dataLen){
+        this(na, nn, primKey, primKey, typ, dataLen);
+    }
+
+    /**
+     * @param na The name of the attribute.
+     * @param nn true if the attribute has a NOTNULL constraint, false otherwise
+     * @param primKey true if the attribute is a PRIMARYKEY, false otherwise
+     * @param uniq true if the attribute has a UNIQUE constraint, false otherwise
+     * @param typ The dataType of the attribute
+     * @param dataLen The length of the dataType if the attribute is a CHAR or VARCHAR dataType.
+     *                Ignored if typ is not CHAR or VARCHAR.
+     */
+    public Attribute(String na, boolean nn, boolean primKey, boolean uniq, Datatype typ, int dataLen){
         name = na;
         not_null = nn;
-        unique = uniq;
         type = typ;
+
+        if (primKey) {
+            //primary keys are always unique
+            primaryKey = true;
+            unique = true;
+        }
+        else {
+            primaryKey = false;
+            unique = uniq;
+        }
+
         setDataLength(dataLen);
     }
 
@@ -51,10 +99,22 @@ public class Attribute {
 
     public String getName() { return name; }
     public boolean isNotNull() { return not_null; }
-    public boolean isPrimaryKey() { return unique; }
+
+    public boolean isUnique() {
+        return unique;
+    }
+
+    public boolean isPrimaryKey() { return primaryKey; }
     public Datatype getType() { return type; }
 
     public void setUnique(boolean u){
         unique = u;
+    }
+
+    public void setPrimaryKey(boolean primaryKey){
+        this.primaryKey = primaryKey;
+        if (primaryKey) {
+            this.unique = true;
+        }
     }
 }
