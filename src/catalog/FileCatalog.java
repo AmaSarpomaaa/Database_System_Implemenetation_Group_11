@@ -43,12 +43,14 @@ public class FileCatalog implements Catalog {
                 int attrCount = in.readInt();
                 List<Attribute> attrs = new ArrayList<>();
                 for (int i = 0; i < attrCount; i++) {
-                    String   attrName   = in.readUTF();
-                    boolean  notNull    = in.readBoolean();
-                    boolean  primaryKey = in.readBoolean();
-                    Datatype type       = Datatype.valueOf(in.readUTF());
-                    int      dataLength = in.readInt();
-                    attrs.add(new Attribute(attrName, notNull, primaryKey, type, dataLength));
+                    String attrName = in.readUTF();
+                    boolean notNull = in.readBoolean();
+                    boolean primaryKey = in.readBoolean();
+                    boolean unique = in.readBoolean();
+                    Datatype type = Datatype.valueOf(in.readUTF());
+                    int dataLength = in.readInt();
+
+                    attrs.add(new Attribute(attrName, notNull, primaryKey, unique, type, dataLength));
                 }
 
                 Schema schema = new Schema(attrs);
@@ -88,6 +90,7 @@ public class FileCatalog implements Catalog {
                     out.writeUTF(a.getName());
                     out.writeBoolean(a.isNotNull());
                     out.writeBoolean(a.isPrimaryKey());
+                    out.writeBoolean(a.isUnique());
                     out.writeUTF(a.getType().name());
                     out.writeInt(a.getDataLength());
                 }
