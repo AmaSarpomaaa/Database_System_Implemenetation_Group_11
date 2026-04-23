@@ -92,15 +92,25 @@ public class TableSchema implements Table {
     public boolean isTemporary() { return temporary; }
 
     @Override
+    @Deprecated
     public void insert(Record record) throws DBException {
-        insert(record, false);
+        insert(false, record, false);
     }
 
+    public void insert(boolean indexing, Record record) throws DBException {
+        insert(indexing, record, false);
+    }
+
+    @Deprecated
     public void insert(Record record, boolean allowDup) throws DBException {
+        insert(false, record, allowDup);
+    }
+
+    public void insert(boolean indexing, Record record, boolean allowDup) throws DBException {
         if (storage == null || buffer == null)
             throw new DBException("Table not bound to storage/buffer");
 
-        if (index == null) {
+        if (indexing && index == null) {
             try { buildIndex(storage.getPageSize() / 10); }
             catch (DBException ignored) {}
         }

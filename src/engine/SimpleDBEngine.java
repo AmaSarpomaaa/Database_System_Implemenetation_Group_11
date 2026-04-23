@@ -85,7 +85,7 @@ public class SimpleDBEngine implements DBEngine {
             throw new DBException(e.getMessage());
         }
 
-        DDLParser ddl = new DDLParser(catalog, storage, buffer);
+        DDLParser ddl = new DDLParser(catalog, storage, buffer, indexingEnabled);
 
         if (cmd instanceof CreateTableCommand)    return ddl.createTable((CreateTableCommand) cmd);
         if (cmd instanceof DropTableCommand)      return ddl.dropTable((DropTableCommand) cmd);
@@ -123,7 +123,7 @@ public class SimpleDBEngine implements DBEngine {
                     if (pid != -1) {
                         Page p = buffer.getPage(pid);
                         for (Record r : p.getRecords()) {
-                            if (cmd.where(wTable.schema(), r)) wTable.insert(r);
+                            if (cmd.where(wTable.schema(), r)) wTable.insert(indexingEnabled, r);
                         }
                     }
                 } else {
@@ -131,7 +131,7 @@ public class SimpleDBEngine implements DBEngine {
                     for (int pid : fts.getPageIds()) {
                         Page p = buffer.getPage(pid);
                         for (Record r : p.getRecords()) {
-                            if (cmd.where(wTable.schema(), r)) wTable.insert(r);
+                            if (cmd.where(wTable.schema(), r)) wTable.insert(indexingEnabled, r);
                         }
                     }
                 }
@@ -182,9 +182,9 @@ public class SimpleDBEngine implements DBEngine {
                     int existingPid = index.search((Comparable<Object>) pkVal);
                     if (existingPid != -1)
                         throw new DBException("duplicate primary key value: ( " + pkVal + " )");
-                    ts.insert(r, true);  // index already checked, skip internal scan
+                    ts.insert(indexingEnabled, r, true);  // index already checked, skip internal scan
                 } else {
-                    ts.insert(r, false); // no index, let TableSchema do the full scan check
+                    ts.insert(indexingEnabled, r, false); // no index, let TableSchema do the full scan check
                 }
                 inserted++;
             } catch (DBException e) {

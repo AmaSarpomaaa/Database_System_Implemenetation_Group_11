@@ -8,7 +8,10 @@ public interface Table {
     String name();
     Schema schema();
     boolean isTemporary();
+
+    @Deprecated
     void insert(Record record) throws DBException;
+    void insert(boolean indexing, Record record) throws DBException;
 
     List<Record> scan() throws DBException;
 

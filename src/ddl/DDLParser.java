@@ -16,11 +16,18 @@ public class DDLParser implements DDLProcessor {
     private final Catalog catalog;
     private final StorageManager storage;
     private final BufferManager buffer;
+    private final boolean indexing;
 
+    @Deprecated
     public DDLParser(Catalog catalog, StorageManager storage, BufferManager buffer) {
+        this(catalog, storage, buffer, false);
+    }
+
+    public DDLParser(Catalog catalog, StorageManager storage, BufferManager buffer, boolean indexing) {
         this.catalog = catalog;
         this.storage = storage;
         this.buffer = buffer;
+        this.indexing = indexing;
     }
 
     @Override
@@ -129,7 +136,7 @@ public class DDLParser implements DDLProcessor {
                 rNew.addAttribute(v);
             }
             rNew.addAttribute(defaultVal);
-            newTable.insert(rNew);
+            newTable.insert(indexing, rNew);
         }
 
         catalog.removeTable(tableName);
@@ -180,7 +187,7 @@ public class DDLParser implements DDLProcessor {
             for (int i = 0; i < vals.size(); i++) {
                 if (i != dropIndex) rNew.addAttribute(vals.get(i));
             }
-            newTable.insert(rNew);
+            newTable.insert(indexing, rNew);
         }
         for (int pageId : oldT.getPageIds()) {
             storage.freePage(pageId);

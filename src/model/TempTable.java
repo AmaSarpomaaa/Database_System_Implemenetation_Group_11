@@ -8,6 +8,7 @@ import java.util.List;
  * A temporary, in-memory table used during query execution
  * (e.g. for Cartesian products). Never persisted to disk.
  */
+@Deprecated
 public class TempTable implements Table {
 
     private final String name;
@@ -34,6 +35,11 @@ public class TempTable implements Table {
     public void insert(Record record) throws DBException {
         schema.validate(record);
         records.add(record);
+    }
+
+    @Override
+    public void insert(boolean indexing, Record record) throws DBException {
+        insert(record);
     }
 
     @Override

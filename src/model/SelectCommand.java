@@ -204,7 +204,7 @@ public class SelectCommand extends ParsedCommand {
                             combined.addAttribute(rightRec.getAttributes().get(i));
                         }
 
-                        temp.insert(combined);
+                        temp.insert(false, combined);
                     }
                 }
             }
