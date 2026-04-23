@@ -68,7 +68,7 @@ public class ParserImplementation implements Parser
 
     private ParsedCommand parseCreate(String input) throws ParseException {
 
-        //Check for "CREATE TABLE <tableName> (<something>);
+        //Check for "CREATE TABLE <tableName> (<something>)";
         Pattern pattern = Pattern.compile("CREATE TABLE (\\w+) *\\((.*)\\);");
         Matcher matcher = pattern.matcher(input);
 
@@ -102,13 +102,14 @@ public class ParserImplementation implements Parser
             String attributeName;
             Datatype attributeType;
             int attributeTypeLength;     //-1 for anything other than CHAR and VARCHAR
-            boolean isPrimaryKey;
-            boolean notNull;
+            boolean isPrimaryKey = false;
+            boolean notNull = false;
+            boolean isUnique = false;
 
             if (attributeSplit.length < 2) {
                 throw new ParseException("Attribute missing name or type in \"" + attributeString + "\"");
             }
-            else if (attributeSplit.length < 5) {
+            else if (attributeSplit.length < 6) {
 
                 //extract attribute name
                 attributeName = attributeSplit[0].toLowerCase();
@@ -157,52 +158,23 @@ public class ParserImplementation implements Parser
 
                 //extract attribute constraints
 
-                if (attributeSplit.length == 2) {
-                    isPrimaryKey = false;
-                    notNull = false;
-                }
-                else if (attributeSplit.length == 3) {
-                    if (attributeSplit[2].equals("PRIMARYKEY")) {
-                        isPrimaryKey = true;
-                        notNull = false;
-                    }
-                    else if (attributeSplit[2].equals("NOTNULL")) {
-                        notNull = true;
-                        isPrimaryKey = false;
-                    }
-                    else {
-                        throw new ParseException("Attribute constraint \"" + attributeSplit[2] + "\" was not a valid constraint.");
-                    }
-                }
-                else { // attributeSplit.length == 4
-                    //both should be true by the end of the else statement, unless an error is thrown
-                    //but the logic is complicated enough that they need to be assigned here to make
-                    //intellij recognize that they're always initialized
-                    isPrimaryKey = false;
-                    notNull = false;
+                if (attributeSplit.length > 2) {  //at least one constraint
 
-                    if (attributeSplit[2].equals("PRIMARYKEY")) {
-                        isPrimaryKey = true;
-                    }
-                    else if (attributeSplit[2].equals("NOTNULL")) {
-                        notNull = true;
-                    }
-                    else {
-                        throw new ParseException("Attribute constraint \"" + attributeSplit[2] + "\" was not a valid constraint.");
-                    }
+                    for (int i = 2; i < attributeSplit.length; i++)
+                    {
+                        switch (attributeSplit[i]) {
+                            case "PRIMARYKEY": isPrimaryKey = true; break;
+                            case "NOTNULL": notNull = true; break;
+                            case "UNIQUE": isUnique = true; break;
+                            default: throw new ParseException("Attribute constraint \"" + attributeSplit[i] + "\" was not a valid constraint.");
+                        }
 
-                    if (attributeSplit[3].equals("PRIMARYKEY")) {
-                        isPrimaryKey = true;
-                    }
-                    else if (attributeSplit[3].equals("NOTNULL")) {
-                        notNull = true;
-                    }
-                    else {
-                        throw new ParseException("Attribute constraint \"" + attributeSplit[2] + "\" was not a valid constraint.");
-                    }
+                        for (int j = 2; j < i; j++) {
+                            if (attributeSplit[i].equals(attributeSplit[j])) {
+                                throw new ParseException("Duplicate attribute constraints in \"" + attributeString + "\".");
+                            }
+                        }
 
-                    if (attributeSplit[2].equals(attributeSplit[3])) {
-                        throw new ParseException("Duplicate attribute constraints in \"" + attributeString + "\".");
                     }
 
                 }
@@ -213,7 +185,12 @@ public class ParserImplementation implements Parser
                 throw new ParseException("Attribute \"" + attributeString + "\" included more than 4 pieces of information");
             }
 
-            Attribute attribute = new Attribute(attributeName, notNull, isPrimaryKey, attributeType, attributeTypeLength);
+            //All primary keys are unique
+            if (isPrimaryKey) {
+                isUnique = true;
+            }
+
+            Attribute attribute = new Attribute(attributeName, notNull, isPrimaryKey, isUnique, attributeType, attributeTypeLength);
             attributes.add(attribute);
 
         }

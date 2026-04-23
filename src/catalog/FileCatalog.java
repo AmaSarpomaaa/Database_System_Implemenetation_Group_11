@@ -8,29 +8,32 @@ import util.DBException;
 import java.io.*;
 import java.util.*;
 
-/**
- * Catalog implementation:
- * - Persists table schemas AND the table's pageIds
- * - Reloads them on startup
- */
 public class FileCatalog implements Catalog {
 
     private final File catalogFile;
     private final Map<String, Table> tables = new HashMap<>();
 
+    private final Map<String, Integer> savedIndexRoots = new HashMap<>();
+
+    private int indexMaxKeys = 40;
+
     public FileCatalog(String dbLocation) {
         this.catalogFile = new File(dbLocation + ".catalog");
+    }
+
+    public void setIndexMaxKeys(int maxKeys) {
+        this.indexMaxKeys = maxKeys;
     }
 
     @Override
     public void load() throws DBException {
         tables.clear();
+        savedIndexRoots.clear();
 
-        if (!catalogFile.exists() || catalogFile.length() == 0) {
-            return;
-        }
+        if (!catalogFile.exists() || catalogFile.length() == 0) return;
 
-        try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(catalogFile)))) {
+        try (DataInputStream in = new DataInputStream(
+                new BufferedInputStream(new FileInputStream(catalogFile)))) {
 
             int tableCount = in.readInt();
 
@@ -39,28 +42,31 @@ public class FileCatalog implements Catalog {
 
                 int attrCount = in.readInt();
                 List<Attribute> attrs = new ArrayList<>();
-
                 for (int i = 0; i < attrCount; i++) {
                     String attrName = in.readUTF();
                     boolean notNull = in.readBoolean();
                     boolean primaryKey = in.readBoolean();
+                    boolean unique = in.readBoolean();
                     Datatype type = Datatype.valueOf(in.readUTF());
                     int dataLength = in.readInt();
 
-                    attrs.add(new Attribute(attrName, notNull, primaryKey, type, dataLength));
+                    attrs.add(new Attribute(attrName, notNull, primaryKey, unique, type, dataLength));
                 }
 
                 Schema schema = new Schema(attrs);
 
                 int pageCount = in.readInt();
                 List<Integer> pageIds = new ArrayList<>();
-                for (int i = 0; i < pageCount; i++) {
-                    pageIds.add(in.readInt());
+                for (int i = 0; i < pageCount; i++) pageIds.add(in.readInt());
+
+                // Nread index root page ID
+                int indexRootPageId = in.readInt();
+
+                tables.put(tableName.toLowerCase(), new TableSchema(tableName, schema, pageIds));
+
+                if (indexRootPageId != -1) {
+                    savedIndexRoots.put(tableName.toLowerCase(), indexRootPageId);
                 }
-
-                Table table = new TableSchema(tableName, schema, pageIds);
-
-                tables.put(tableName.toLowerCase(), table);
             }
 
         } catch (IOException e) {
@@ -70,7 +76,8 @@ public class FileCatalog implements Catalog {
 
     @Override
     public void save() throws DBException {
-        try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(catalogFile)))) {
+        try (DataOutputStream out = new DataOutputStream(
+                new BufferedOutputStream(new FileOutputStream(catalogFile)))) {
 
             out.writeInt(tables.size());
 
@@ -79,11 +86,11 @@ public class FileCatalog implements Catalog {
 
                 List<Attribute> attrs = table.schema().getAttributes();
                 out.writeInt(attrs.size());
-
                 for (Attribute a : attrs) {
                     out.writeUTF(a.getName());
                     out.writeBoolean(a.isNotNull());
                     out.writeBoolean(a.isPrimaryKey());
+                    out.writeBoolean(a.isUnique());
                     out.writeUTF(a.getType().name());
                     out.writeInt(a.getDataLength());
                 }
@@ -92,8 +99,12 @@ public class FileCatalog implements Catalog {
                     List<Integer> pids = ts.getPageIds();
                     out.writeInt(pids.size());
                     for (int pid : pids) out.writeInt(pid);
+
+                    // write index root page ID
+                    out.writeInt(ts.getIndexRootPageId());
                 } else {
-                    out.writeInt(0);
+                    out.writeInt(0);   // pageCount
+                    out.writeInt(-1);  // indexRootPageId
                 }
             }
 
@@ -106,6 +117,11 @@ public class FileCatalog implements Catalog {
         for (Table t : tables.values()) {
             if (t instanceof TableSchema ts) {
                 ts.bind(storage, buffer);
+                // reopen the index if one was persisted
+                Integer root = savedIndexRoots.get(ts.name().toLowerCase());
+                if (root != null) {
+                    ts.openIndex(root, indexMaxKeys);
+                }
             }
         }
     }
@@ -135,9 +151,7 @@ public class FileCatalog implements Catalog {
     }
 
     @Override
-    public Map<String, Table> getTables(){
-        return tables;
-    }
+    public Map<String, Table> getTables() { return tables; }
 
     @Override
     public boolean exists(String tableName) {
