@@ -165,9 +165,7 @@ public class SimpleDBEngine implements DBEngine {
         if (!(catalog.getTable(tableName) instanceof TableSchema ts))
             throw new DBException("Unsupported table type");
 
-        BPlusTree index   = indexingEnabled ? ts.getIndex() : null;
         Attribute pk      = ts.schema().getPrimaryKey();
-        int       pkIdx   = (pk != null) ? ts.schema().getAttributeIndex(pk.getName()) : -1;
         int       inserted = 0;
 
         for (List<Object[]> row : cmd.getValues()) {
