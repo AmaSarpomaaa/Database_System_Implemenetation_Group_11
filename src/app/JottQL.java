@@ -87,7 +87,7 @@ public class JottQL {
                 if (result != null && result.getMessage() != null) {
                     System.out.println(result.getMessage());
                 }
-                System.out.println("Query executed in " + (end - start) + "ms");
+//                System.out.println("Query executed in " + (end - start) + "ms");
 
             } catch (DBException e) {
                 System.out.println("Error: " + e.getMessage());
