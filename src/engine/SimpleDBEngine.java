@@ -385,7 +385,6 @@ public class SimpleDBEngine implements DBEngine {
 
         if (!(t instanceof TableSchema ts)) throw new DBException("Unsupported table type");
         for (int pid : ts.getPageIds()) {
-            System.out.println(pid);
             Page p = buffer.getPage(pid);
             for (Record r : p.getRecords()) {
                 StringBuilder row = new StringBuilder("|");

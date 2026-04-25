@@ -270,7 +270,7 @@ public class TableSchema implements Table {
         // If not indexing, check all pages
         else {
             // check duplicates + find insertion page
-            for (int i = 0; i < pageIds.size(); i++) {
+            for (int i = 0; i < pageIds.size() - 1; i++) {
                 int pid = pageIds.get(i);
                 Page p = buffer.getPage(pid);
                 List<Record> records = p.getRecords();
@@ -288,6 +288,7 @@ public class TableSchema implements Table {
                 Object lastPk = records.isEmpty() ? null : records.get(records.size() - 1).getAttributes().get(pkIndex).getRaw();
                 if (records.isEmpty() || compareKeys(pkValue, lastPk) <= 0 || isLastPage) {
                     targetPid = pid;
+                    break;
                 }
             }
         }
