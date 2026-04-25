@@ -13,7 +13,7 @@ public class FileCatalog implements Catalog {
     private final File catalogFile;
     private final Map<String, Table> tables = new HashMap<>();
 
-    private final Map<String, Integer> savedIndexRoots = new HashMap<>();
+    private final Map<String, int[]> savedIndexRoots = new HashMap<>();
 
     private int indexMaxKeys = 40;
 
@@ -59,14 +59,15 @@ public class FileCatalog implements Catalog {
                 List<Integer> pageIds = new ArrayList<>();
                 for (int i = 0; i < pageCount; i++) pageIds.add(in.readInt());
 
-                // Nread index root page ID
-                int indexRootPageId = in.readInt();
+                // Read index root page IDs
+                int[] indexRootPageIds = new int[attrCount];
+                for (int i = 0; i < indexRootPageIds.length; i++) {
+                    indexRootPageIds[i] = in.readInt();
+                }
 
                 tables.put(tableName.toLowerCase(), new TableSchema(tableName, schema, pageIds));
 
-                if (indexRootPageId != -1) {
-                    savedIndexRoots.put(tableName.toLowerCase(), indexRootPageId);
-                }
+                savedIndexRoots.put(tableName.toLowerCase(), indexRootPageIds);
             }
 
         } catch (IOException e) {
@@ -100,11 +101,19 @@ public class FileCatalog implements Catalog {
                     out.writeInt(pids.size());
                     for (int pid : pids) out.writeInt(pid);
 
-                    // write index root page ID
-                    out.writeInt(ts.getIndexRootPageId());
+                    // write index root page IDs
+                    int[] rootPageIds = ts.getIndexRootPageIds();
+
+                    for (int id : rootPageIds) {
+                        out.writeInt(id);
+                    }
+
                 } else {
                     out.writeInt(0);   // pageCount
-                    out.writeInt(-1);  // indexRootPageId
+                    for (int i = 0; i < attrs.size(); i++) {
+                        out.writeInt(-1); // indexRootPageIds
+                    }
+
                 }
             }
 
@@ -118,9 +127,9 @@ public class FileCatalog implements Catalog {
             if (t instanceof TableSchema ts) {
                 ts.bind(storage, buffer);
                 // reopen the index if one was persisted
-                Integer root = savedIndexRoots.get(ts.name().toLowerCase());
-                if (root != null) {
-                    ts.openIndex(root, indexMaxKeys);
+                int[] roots = savedIndexRoots.get(ts.name().toLowerCase());
+                if (roots != null) {
+                    ts.openIndices(roots, indexMaxKeys);
                 }
             }
         }

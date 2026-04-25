@@ -175,17 +175,22 @@ public class SimpleDBEngine implements DBEngine {
             Record r = new Record();
             for (Object[] pair : row) r.addAttribute(new Value(pair[1]));
             try {
-                // Fast duplicate check via index
-                if (index != null && pkIdx >= 0) {
-                    Object pkVal = r.getAttributes().get(pkIdx).getRaw();
-                    @SuppressWarnings("unchecked")
-                    int existingPid = index.search((Comparable<Object>) pkVal);
-                    if (existingPid != -1)
-                        throw new DBException("duplicate primary key value: ( " + pkVal + " )");
-                    ts.insert(indexingEnabled, r, true);  // index already checked, skip internal scan
-                } else {
-                    ts.insert(indexingEnabled, r, false); // no index, let TableSchema do the full scan check
-                }
+                ts.insert(indexingEnabled, r, false);
+                //Pretty sure this stuff is all redundant
+//                // Fast duplicate check via index
+//                if (index != null && pkIdx >= 0) {
+//
+//                    List<Value> attributes = r.getAttributes();
+//
+//                    Object pkVal = r.getAttributes().get(pkIdx).getRaw();
+//                    @SuppressWarnings("unchecked")
+//                    int existingPid = index.search((Comparable<Object>) pkVal);
+//                    if (existingPid != -1)
+//                        throw new DBException("duplicate primary key value: ( " + pkVal + " )");
+//                    ts.insert(indexingEnabled, r, true);  // index already checked, skip internal scan
+//                } else {
+//                    ts.insert(indexingEnabled, r, false); // no index, let TableSchema do the full scan check
+//                }
                 inserted++;
             } catch (DBException e) {
                 return Result.ok("Error: " + e.getMessage()
