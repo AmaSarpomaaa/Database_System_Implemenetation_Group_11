@@ -72,6 +72,10 @@ public class BPlusTree {
         }
     }
 
+    /**
+     * @param key The key to be searched for
+     * @return The page id of the page a key is on, or -1 if that key isn't in the tree.
+     */
     public int search(Comparable<Object> key) throws DBException {
         int leafId       = findLeafPageId(key, null);
         NodeContent leaf = readNode(leafId);
@@ -81,6 +85,21 @@ public class BPlusTree {
             }
         }
         return NO_PAGE;
+    }
+
+    /**
+     * @param key The key to be checked
+     * @return The id of the page a key should be placed into
+     */
+    public int findPage(Comparable<Object> key) throws DBException {
+        int leafId       = findLeafPageId(key, null);
+        NodeContent leaf = readNode(leafId);
+        for (int i = 0; i < leaf.keys.size(); i++) {
+            if (leaf.keys.get(i).compareTo(key) >= 0) {
+                return leaf.pointers.get(i);
+            }
+        }
+        return leaf.pointers.get(leaf.keys.size() - 1);
     }
 
     public boolean delete(Comparable<Object> key) throws DBException {

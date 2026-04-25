@@ -216,7 +216,7 @@ public class TableSchema implements Table {
         int    pkIndex = schema.getAttributeIndex(pk.getName());
         Object pkValue = record.getAttributes().get(pkIndex).getRaw();
 
-        // duplicate check if needed
+        // duplicate check if indexing (check while inserting if not indexing)
         if (!allowDup) {
             if (index != null) {
                 @SuppressWarnings("unchecked")
@@ -237,16 +237,6 @@ public class TableSchema implements Table {
                         if(duplicatePid != -1) {  //there's another identical value
                             throw new DBException("duplicate unique value: ( " + value + " )");
                         }
-                    }
-                }
-
-            } else {
-                for (int i = 0; i < pageIds.size(); i++) {
-                    Page p = buffer.getPage(pageIds.get(i));
-                    for (Record existing : p.getRecords()) {
-                        Object existingPk = existing.getAttributes().get(pkIndex).getRaw();
-                        if (pkValue != null && pkValue.equals(existingPk))
-                            throw new DBException("duplicate primary key value: ( " + pkValue + " )");
                     }
                 }
             }
@@ -272,38 +262,70 @@ public class TableSchema implements Table {
             return;
         }
 
-        // Use index to find the right page, fall back to last page
         int targetPid = -1;
+        // Use index to find the right page
         if (index != null) {
-            // find the page of the largest key <= pkValue via range search
-            // just use last page as target and let sorted insert handle it,
-            // but skip the full scan by going straight to last page
+            targetPid = index.findPage((Comparable<Object>) pkValue);
+        }
+        // If not indexing, check all pages
+        else {
+            // check duplicates + find insertion page
+            for (int i = 0; i < pageIds.size(); i++) {
+                int pid = pageIds.get(i);
+                Page p = buffer.getPage(pid);
+                List<Record> records = p.getRecords();
+
+                for (Record existing : records) {
+                    Object existingPk = existing.getAttributes().get(pkIndex).getRaw();
+                    if (pkValue != null && pkValue.equals(existingPk) && !allowDup) {
+                        throw new DBException("duplicate primary key value: ( " + pkValue + " )");
+                    }
+                }
+
+                boolean isLastPage = (i == pageIds.size() - 1);
+
+                // record belongs in this page if its key <= last key on page, OR this is the last page
+                Object lastPk = records.isEmpty() ? null : records.get(records.size() - 1).getAttributes().get(pkIndex).getRaw();
+                if (records.isEmpty() || compareKeys(pkValue, lastPk) <= 0 || isLastPage) {
+                    targetPid = pid;
+                }
+            }
         }
 
-        // Fall back: just append to last page, split if needed
-        int  lastIdx = pageIds.size() - 1;
-        int  pid     = pageIds.get(lastIdx);
-        Page p       = buffer.getPage(pid);
+        //if that didn't get a valid page, go to the last page
+        if (targetPid == -1) {
+            int  lastIdx = pageIds.size() - 1;
+            targetPid = pageIds.get(lastIdx);
+        }
+
+        //find the index of the page
+        int targetIndex = -1;   //should always be changed in the for loop
+        for (int i = 0; i < pageIds.size(); i++) {
+            if (pageIds.get(i) == targetPid) {
+                targetIndex = i;
+            }
+        }
+
+        Page p       = buffer.getPage(targetPid);
 
         if (buffer.canFitRecord(p, record)) {
             insertIntoSortedPosition(p.getRecords(), record, pkIndex);
-            buffer.markDirty(pid);
+            buffer.markDirty(targetPid);
             //Update index trees
             for (int i = 0; i < tableAttributes.size(); i++) {
-
                 Attribute attribute = tableAttributes.get(i);
                 if (attribute.isUnique() || attribute.isPrimaryKey()) {
-                    updateIndex(recordAttributes.get(i).getRaw(), pid, i);
+                    updateIndex(recordAttributes.get(i).getRaw(), targetPid, i);
                 }
-
             }
         } else {
             insertIntoSortedPosition(p.getRecords(), record, pkIndex);
-            splitPage(lastIdx, p);
-            buffer.markDirty(pid);
+            splitPage(targetIndex, p);
+            buffer.markDirty(targetPid);
+            //rebuild indexes after splitting
             if (index != null) {
-                rebuildIndexForPage(pageIds.get(lastIdx));
-                rebuildIndexForPage(pageIds.get(lastIdx + 1));
+                rebuildIndexForPage(pageIds.get(targetIndex));
+                rebuildIndexForPage(pageIds.get(targetIndex + 1));
                 indexRootPageId = index.getRootPageId();
             }
         }
