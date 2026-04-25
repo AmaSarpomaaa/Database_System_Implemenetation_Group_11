@@ -109,34 +109,40 @@ public class SimpleDBEngine implements DBEngine {
 
             Table fTable = cmd.from(catalog, storage, buffer, ddl);
             temp_tables.add(fTable);
+            Table wTable;
 
-            Table wTable = new TableSchema("w_table", fTable.schema(), storage, buffer);
-            temp_tables.add(wTable);
+            if (cmd.hasWhere()) {
+                wTable = new TableSchema("w_table", fTable.schema(), storage, buffer);
+                temp_tables.add(wTable);
 
-            if (fTable instanceof TableSchema fts) {
-                BPlusTree index = indexingEnabled ? fts.getIndex() : null;
-                Object pkVal    = (index != null) ? extractPKEqualityValue(cmd, fts) : null;
+                if (fTable instanceof TableSchema fts) {
+                    BPlusTree index = indexingEnabled ? fts.getIndex() : null;
+                    Object pkVal    = (index != null) ? extractPKEqualityValue(cmd, fts) : null;
 
-                if (pkVal != null) {
-                    int pid = index.search((Comparable<Object>) pkVal);
-                    // Index lookup — only load the one page
-                    if (pid != -1) {
-                        Page p = buffer.getPage(pid);
-                        for (Record r : p.getRecords()) {
-                            if (cmd.where(wTable.schema(), r)) wTable.insert(indexingEnabled, r);
+                    if (pkVal != null) {
+                        int pid = index.search((Comparable<Object>) pkVal);
+                        // Index lookup — only load the one page
+                        if (pid != -1) {
+                            Page p = buffer.getPage(pid);
+                            for (Record r : p.getRecords()) {
+                                if (cmd.where(wTable.schema(), r)) wTable.insert(indexingEnabled, r);
+                            }
+                        }
+                    } else {
+                        // Full scan fallback
+                        for (int pid : fts.getPageIds()) {
+                            Page p = buffer.getPage(pid);
+                            for (Record r : p.getRecords()) {
+                                if (cmd.where(wTable.schema(), r)) wTable.insert(indexingEnabled, r);
+                            }
                         }
                     }
                 } else {
-                    // Full scan fallback
-                    for (int pid : fts.getPageIds()) {
-                        Page p = buffer.getPage(pid);
-                        for (Record r : p.getRecords()) {
-                            if (cmd.where(wTable.schema(), r)) wTable.insert(indexingEnabled, r);
-                        }
-                    }
+                    throw new DBException("Unsupported table type");
                 }
-            } else {
-                throw new DBException("Unsupported table type");
+            }
+            else {
+                wTable = fTable;
             }
 
             Table oTable = cmd.orderBy(wTable, catalog, storage, buffer, ddl);
@@ -396,6 +402,7 @@ public class SimpleDBEngine implements DBEngine {
 
         if (!(t instanceof TableSchema ts)) throw new DBException("Unsupported table type");
         for (int pid : ts.getPageIds()) {
+            System.out.println(pid);
             Page p = buffer.getPage(pid);
             for (Record r : p.getRecords()) {
                 StringBuilder row = new StringBuilder("|");

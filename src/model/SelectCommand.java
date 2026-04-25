@@ -100,10 +100,10 @@ public class SelectCommand extends ParsedCommand {
     }
 
     /**
-     * @return true if the command has an ORDERBY clause; false otherwise
+     * @return true if the command has a WHERE clause; false otherwise
      */
     public boolean hasWhere() {
-        return whereTree == null;
+        return !(whereTree == null);
     }
 
     /**
