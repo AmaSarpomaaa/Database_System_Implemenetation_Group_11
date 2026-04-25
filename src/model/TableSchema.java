@@ -237,11 +237,6 @@ public class TableSchema implements Table {
                         if(duplicatePid != -1) {  //there's another identical value
                             throw new DBException("duplicate unique value: ( " + value + " )");
                         }
-                        /*
-                        CREATE TABLE t1 (x INTEGER PRIMARYKEY, y INTEGER UNIQUE);
-                        INSERT t1 VALUES (1 1);
-                        INSERT t1 VALUES (2 1);
-                         */
                     }
                 }
 

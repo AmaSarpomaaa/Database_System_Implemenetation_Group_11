@@ -165,7 +165,6 @@ public class SimpleDBEngine implements DBEngine {
         if (!(catalog.getTable(tableName) instanceof TableSchema ts))
             throw new DBException("Unsupported table type");
 
-        Attribute pk      = ts.schema().getPrimaryKey();
         int       inserted = 0;
 
         for (List<Object[]> row : cmd.getValues()) {
@@ -174,7 +173,8 @@ public class SimpleDBEngine implements DBEngine {
             for (Object[] pair : row) r.addAttribute(new Value(pair[1]));
             try {
                 ts.insert(indexingEnabled, r, false);
-                //Pretty sure this stuff is all redundant
+
+                //Pretty sure this stuff is all redundant, because it's all handled in ts.insert
 //                // Fast duplicate check via index
 //                if (index != null && pkIdx >= 0) {
 //
@@ -189,6 +189,7 @@ public class SimpleDBEngine implements DBEngine {
 //                } else {
 //                    ts.insert(indexingEnabled, r, false); // no index, let TableSchema do the full scan check
 //                }
+
                 inserted++;
             } catch (DBException e) {
                 return Result.ok("Error: " + e.getMessage()
